@@ -1,0 +1,394 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="Si7021 I2C Temp and Humidity Sensor" version="2.8.0.170">
+    <desc><![CDATA[Demonstrates use of:
+- I2C Master high-level and low-level API, to operate the HDC2080 humidity and temperature sensor on the LaunchPad SensorTag Kit (LPSTK).
+- Timer 2, to pulse-width modulate the RGB LEDs on the LaunchPad SensorTag Kit (LPSTK).
+
+The "I2C Temp and Humidity Sensor" task polls the HDC2080 sensor at 1 Hz, logs the results, and reports the following events to the application:
+- Temperature change by more than a configurable amount.
+- Humidity change by more than a configurable amount.
+- Temperature and humidity log buffers are full.
+- Error handling: HDC2080 interrupt timeout.
+- Error handling: I2C missing acknowledgment or SCL stretch timeout.
+
+The application uses the "RGB LED Blinker" task to indicate temperature and humidity changes, and errors:
+- A blue or red blink indicates temperature decrease or increase, respectively.
+- A yellow or green blink indicates humidity decrease or increase, respectively.
+- Continuous red or blue blinking indicates error.
+
+The application also prints temperature and humidity over UART to a terminal window.
+
+BOARD SETUP (requires a LaunchPad, for example LAUNCHXL-CC1352R1):
+- Remove all 11 jumpers on the pin row between the XDS110 and the device on the LaunchPad.
+- Use the supplied cables to connect JTAG and UART from the LPSTK board to the LaunchPad.
+
+See the header in the application source file ("main.c" or similar) for further details and instructions. This file is located in the source code output directory.]]></desc>
+    <pattr name="Apply default power mode">1</pattr>
+    <pattr name="Board">CC1352R LaunchPad SensorTag Kit (LPSTK)</pattr>
+    <pattr name="Chip name">CC2652R1F</pattr>
+    <pattr name="Chip package">QFN48 7x7 RGZ</pattr>
+    <pattr name="Chip revision">E</pattr>
+    <pattr name="Clock in active mode">0</pattr>
+    <pattr name="Code prefix"></pattr>
+    <pattr name="Default power mode">1</pattr>
+    <pattr name="Operating system">TI-RTOS</pattr>
+    <pattr name="Output directory">./si7021_src</pattr>
+    <pattr name="RTC tick interval (16.16 format)">2000</pattr>
+    <pattr name="Run-time logging UART RX pin"></pattr>
+    <pattr name="Run-time logging UART TX pin"></pattr>
+    <task name="I2C Temp and Humidity Sensor">
+        <desc><![CDATA[The task configures the HDC2080 sensor for autonomous temperature and humidity measurements at 1 Hz, with interrupt on data ready.
+
+The task uses a combination of high-level and low-level I2C API:
+- High-level I2C procedures are used to initialize the HDC2080, and start measurements. For a series of I2C device register accesses, this gives both smaller task code and reduces RAM code size.
+- Low-level I2C procedures are used to read out the results of each measurement. This minimizes I2C read operation overhead, and thereby reduces current consumption.
+
+The task wakes up on the HDC2080 interrupt approximately every 1 second, or on Timer 0 Event Trigger if no interrupt occurs for 1.5 seconds.
+
+The task reports the following events to the application:
+- Temperature change by more than a configurable amount.
+- Humidity change by more than a configurable amount.
+- Temperature and humidity log buffers are full.
+- Error handling: HDC2080 interrupt timeout.
+- Error handling: I2C missing acknowledgment or SCL stretch timeout.
+
+It is possible to trigger the error conditions on purpose:
+- Connect the interrupt pin to VDD to cause interrupt timeout.
+- Connect I2C SCL to GND to cause SCL stretch timeout.]]></desc>
+        <tattr name="SI7021_I2C_ADDR" desc="HDC2080 I2C address, shifted left one bit" type="expr_hex" content="const" scope="task" min="0" max="65535">0x0080</tattr>
+        <tattr name="output.hum" desc="Relative humidity [1/64 %]" type="expr_hex" content="struct" scope="task" min="0" max="65535">0</tattr>
+        <tattr name="output.temp" desc="Temperature [1/64 degC]" type="expr_hex" content="struct" scope="task" min="0" max="65535">0</tattr>
+        <resource_ref name="ADC" enabled="0"/>
+        <resource_ref name="AON Domain Functionality" enabled="0"/>
+        <resource_ref name="Accumulator-Based Math" enabled="1"/>
+        <resource_ref name="Analog Open-Drain Pins" enabled="0"/>
+        <resource_ref name="Analog Open-Source Pins" enabled="0"/>
+        <resource_ref name="Analog Pins" enabled="0"/>
+        <resource_ref name="COMPA" enabled="0"/>
+        <resource_ref name="COMPA Event Trigger" enabled="0"/>
+        <resource_ref name="COMPB" enabled="0"/>
+        <resource_ref name="COMPB Event Trigger" enabled="0"/>
+        <resource_ref name="Delay Insertion" enabled="0"/>
+        <resource_ref name="Differential Output Pins" enabled="0"/>
+        <resource_ref name="Digital Input Pins" enabled="0">
+            <io_usage name="HDC_INT" label="HDC2080 sensor interrupt">
+                <uattr name="Configuration on initialization">1</uattr>
+                <uattr name="Configuration on uninitialization">-1</uattr>
+                <uattr name="Pin count">0</uattr>
+                <uattr name="Pin/0000">DIO15</uattr>
+                <uattr name="Pin/0001"></uattr>
+                <uattr name="Pin/0002"></uattr>
+                <uattr name="Pin/0003"></uattr>
+                <uattr name="Pin/0004"></uattr>
+                <uattr name="Pin/0005"></uattr>
+                <uattr name="Pin/0006"></uattr>
+                <uattr name="Pin/0007"></uattr>
+                <uattr name="Pin/0008"></uattr>
+                <uattr name="Pin/0009"></uattr>
+                <uattr name="Pin/0010"></uattr>
+                <uattr name="Pin/0011"></uattr>
+                <uattr name="Pin/0012"></uattr>
+                <uattr name="Pin/0013"></uattr>
+                <uattr name="Pin/0014"></uattr>
+                <uattr name="Pin/0015"></uattr>
+                <uattr name="Pin/0016"></uattr>
+                <uattr name="Pin/0017"></uattr>
+                <uattr name="Pin/0018"></uattr>
+                <uattr name="Pin/0019"></uattr>
+                <uattr name="Pin/0020"></uattr>
+                <uattr name="Pin/0021"></uattr>
+                <uattr name="Pin/0022"></uattr>
+                <uattr name="Pin/0023"></uattr>
+                <uattr name="Pin/0024"></uattr>
+                <uattr name="Pin/0025"></uattr>
+                <uattr name="Pin/0026"></uattr>
+                <uattr name="Pin/0027"></uattr>
+                <uattr name="Pin/0028"></uattr>
+                <uattr name="Pin/0029"></uattr>
+                <uattr name="Pin/0030"></uattr>
+                <uattr name="Pin/0031"></uattr>
+            </io_usage>
+        </resource_ref>
+        <resource_ref name="Digital Open-Drain Pins" enabled="0"/>
+        <resource_ref name="Digital Open-Source Pins" enabled="0"/>
+        <resource_ref name="Digital Output Pins" enabled="0">
+            <io_usage name="LED" label="toggle led on sensor read">
+                <uattr name="Configuration on uninitialization">-1</uattr>
+                <uattr name="Output drive strength">0</uattr>
+                <uattr name="Output value on initialization">0</uattr>
+                <uattr name="Pin count">0</uattr>
+                <uattr name="Pin/0000">DIO6</uattr>
+                <uattr name="Pin/0001"></uattr>
+                <uattr name="Pin/0002"></uattr>
+                <uattr name="Pin/0003"></uattr>
+                <uattr name="Pin/0004"></uattr>
+                <uattr name="Pin/0005"></uattr>
+                <uattr name="Pin/0006"></uattr>
+                <uattr name="Pin/0007"></uattr>
+                <uattr name="Pin/0008"></uattr>
+                <uattr name="Pin/0009"></uattr>
+                <uattr name="Pin/0010"></uattr>
+                <uattr name="Pin/0011"></uattr>
+                <uattr name="Pin/0012"></uattr>
+                <uattr name="Pin/0013"></uattr>
+                <uattr name="Pin/0014"></uattr>
+                <uattr name="Pin/0015"></uattr>
+                <uattr name="Pin/0016"></uattr>
+                <uattr name="Pin/0017"></uattr>
+                <uattr name="Pin/0018"></uattr>
+                <uattr name="Pin/0019"></uattr>
+                <uattr name="Pin/0020"></uattr>
+                <uattr name="Pin/0021"></uattr>
+                <uattr name="Pin/0022"></uattr>
+                <uattr name="Pin/0023"></uattr>
+                <uattr name="Pin/0024"></uattr>
+                <uattr name="Pin/0025"></uattr>
+                <uattr name="Pin/0026"></uattr>
+                <uattr name="Pin/0027"></uattr>
+                <uattr name="Pin/0028"></uattr>
+                <uattr name="Pin/0029"></uattr>
+                <uattr name="Pin/0030"></uattr>
+                <uattr name="Pin/0031"></uattr>
+            </io_usage>
+        </resource_ref>
+        <resource_ref name="Dynamic Power Control" enabled="0"/>
+        <resource_ref name="GPIO Event Trigger" enabled="0"/>
+        <resource_ref name="I2C Master" enabled="1">
+            <rattr name="SCL frequency">0</rattr>
+            <rattr name="SCL stretch timeout">20000</rattr>
+            <io_usage>
+                <uattr name="Output drive strength">2</uattr>
+                <uattr name="SCL pin/0000">DIO4</uattr>
+                <uattr name="SDA pin/0000">DIO5</uattr>
+            </io_usage>
+        </resource_ref>
+        <resource_ref name="ISRC" enabled="0"/>
+        <resource_ref name="LCD Controller" enabled="0">
+            <rattr name="Waveform state count">8</rattr>
+            <io_usage>
+                <uattr name="Output drive strength">0</uattr>
+                <uattr name="Pin count">20</uattr>
+                <uattr name="Pin/0000"></uattr>
+                <uattr name="Pin/0001"></uattr>
+                <uattr name="Pin/0002"></uattr>
+                <uattr name="Pin/0003"></uattr>
+                <uattr name="Pin/0004"></uattr>
+                <uattr name="Pin/0005"></uattr>
+                <uattr name="Pin/0006"></uattr>
+                <uattr name="Pin/0007"></uattr>
+                <uattr name="Pin/0008"></uattr>
+                <uattr name="Pin/0009"></uattr>
+                <uattr name="Pin/0010"></uattr>
+                <uattr name="Pin/0011"></uattr>
+                <uattr name="Pin/0012"></uattr>
+                <uattr name="Pin/0013"></uattr>
+                <uattr name="Pin/0014"></uattr>
+                <uattr name="Pin/0015"></uattr>
+                <uattr name="Pin/0016"></uattr>
+                <uattr name="Pin/0017"></uattr>
+                <uattr name="Pin/0018"></uattr>
+                <uattr name="Pin/0019"></uattr>
+                <uattr name="Pin/0020"></uattr>
+                <uattr name="Pin/0021"></uattr>
+                <uattr name="Pin/0022"></uattr>
+                <uattr name="Pin/0023"></uattr>
+                <uattr name="Pin/0024"></uattr>
+                <uattr name="Pin/0025"></uattr>
+                <uattr name="Pin/0026"></uattr>
+                <uattr name="Pin/0027"></uattr>
+                <uattr name="Pin/0028"></uattr>
+                <uattr name="Pin/0029"></uattr>
+                <uattr name="Pin/0030"></uattr>
+                <uattr name="Pin/0031"></uattr>
+            </io_usage>
+        </resource_ref>
+        <resource_ref name="Math and Logic" enabled="0"/>
+        <resource_ref name="Multi-Buffered Output Data Exchange" enabled="0">
+            <rattr name="Buffer count">2</rattr>
+            <rattr name="Indicate overflow at buffer check">1</rattr>
+            <rattr name="Indicate overflow at buffer switch">0</rattr>
+            <rattr name="Prevent overflow at buffer switch">1</rattr>
+        </resource_ref>
+        <resource_ref name="Peripheral Sharing" enabled="0"/>
+        <resource_ref name="Pulse Counter" enabled="0"/>
+        <resource_ref name="RTC Multi-Event Capture" enabled="0"/>
+        <resource_ref name="RTC-Based Execution Scheduling" enabled="1"/>
+        <resource_ref name="Reference DAC" enabled="0"/>
+        <resource_ref name="Run-Time Logging" enabled="0"/>
+        <resource_ref name="SPI Chip Select" enabled="0"/>
+        <resource_ref name="SPI Data Transfer" enabled="0">
+            <rattr name="Bit rate">0</rattr>
+            <rattr name="MISO configuration when inactive">-1</rattr>
+            <rattr name="MOSI configuration on initialization">0</rattr>
+            <rattr name="MOSI configuration on uninitialization">0</rattr>
+            <rattr name="SCLK configuration on initialization">0</rattr>
+            <rattr name="SCLK configuration on uninitialization">0</rattr>
+            <io_usage>
+                <uattr name="MISO pin/0000"></uattr>
+                <uattr name="MOSI pin/0000"></uattr>
+                <uattr name="SCLK pin/0000"></uattr>
+            </io_usage>
+        </resource_ref>
+        <resource_ref name="Signal Observation" enabled="0"/>
+        <resource_ref name="System CPU Alert" enabled="1"/>
+        <resource_ref name="System Event Trigger" enabled="0"/>
+        <resource_ref name="TDC" enabled="0"/>
+        <resource_ref name="Timer 0" enabled="0"/>
+        <resource_ref name="Timer 0 Event Trigger" enabled="0"/>
+        <resource_ref name="Timer 1" enabled="0"/>
+        <resource_ref name="Timer 1 Event Trigger" enabled="0"/>
+        <resource_ref name="Timer 2" enabled="0"/>
+        <resource_ref name="Timer 2 Event Trigger" enabled="0"/>
+        <resource_ref name="UART Emulator" enabled="0">
+            <rattr name="RX buffer size">64</rattr>
+            <rattr name="Required idle period before enabling RX">11</rattr>
+            <rattr name="TX buffer size">64</rattr>
+            <io_usage>
+                <uattr name="RX pin/0000"></uattr>
+                <uattr name="TX pin/0000"></uattr>
+            </io_usage>
+        </resource_ref>
+        <sccode name="event0" init_power_mode="3"><![CDATA[// Cancel both event triggers
+//evhCancelTrigger(0);
+//evhCancelTrigger(1);
+
+// Default is nothing to report
+U16 bvReport = 0;
+
+// If the HDC2080 interrupt has occurred...
+U16 bvActiveEventTrigger;
+//evhGetActiveTrigger(bvActiveEventTrigger);
+if (bvActiveEventTrigger & (1 << 0)) {
+
+    // Read temperature and humidity in one operation using low-level I2C procedures, for reduced
+    // current consumption. Compared to using 2 * i2cDeviceReadReg16LsbFirst(), this saves:
+    // - 1 * i2cStart()
+    // - 3 * i2cTx()
+    // - 1 * i2cRepeatedStart()
+    // - 1 * i2cStop()
+    i2cStart();
+    i2cTx(HDC_I2C_ADDR | I2C_OP_WRITE);
+    i2cTx(HDC_REG_TEMP_L);
+
+    // If successful so far ...
+    if (state.i2cStatus == 0x0000) {
+        U16 tempL;
+        U16 tempH;
+        U16 humL;
+        U16 humH;
+
+        // Read temperature and humidity register values
+        i2cRepeatedStart();
+        i2cTx(HDC_I2C_ADDR | I2C_OP_READ);
+        i2cRxAck(tempL); // HDC_REG_TEMP_L
+        i2cRxAck(tempH); // HDC_REG_TEMP_H
+        i2cRxAck(humL);  // HDC_REG_HUM_L
+        i2cRxNack(humH); // HDC_REG_HUM_H
+        i2cStop();
+
+        // If successful ...
+        if (state.i2cStatus == 0x0000) {
+
+            // Calculate the temperature (6 fractional bits)
+            S16 temp = (tempH << 8) | tempL;
+            accMul16s16u(temp, 165);
+            accGet16(10; temp);
+            temp -= 40 << 6;
+            U16 n = state.logPos;
+            output.pTempLog[n] = temp;
+
+            // Report significant temperature change?
+            U16 tempChange = @(temp - output.temp);
+            if (tempChange > cfg.tempChangeThr) {
+                output.temp = temp;
+                bvReport |= BV_REPORT_TEMP_CHANGE;
+            }
+
+            // Calculate the humidity (6 fractional bits)
+            U16 hum = (humH << 8) | humL;
+            accMul16u16u(hum, 100);
+            accGet16(10; hum);
+            output.pHumLog[n] = hum;
+
+            // Report significant humidity change?
+            U16 humChange = @(hum - output.hum);
+            if (humChange > cfg.humChangeThr) {
+                output.hum = hum;
+                bvReport |= BV_REPORT_HUM_CHANGE;
+            }
+
+            // Report that the temperature log is full?
+            n += 1;
+            if (n == LOG_SIZE) {
+                bvReport |= BV_REPORT_LOG_FULL;
+                n = 0;
+            }
+            state.logPos = n;
+
+            // Wake on interrupt every 1.0 seconds, with 1.5 second timeout
+            //evhSetupGpioTrigger(0, AUXIO_I_HDC_INT, 0, EVH_GPIO_TRIG_ON_MATCH);
+            //evhSetupTimer0Trigger(1, 1500, 2);
+        }
+    }
+
+    // If an I2C error occurred ...
+    if (state.i2cStatus != 0x0000) {
+
+        // We're using a mix of low-level and high-level I2C procedures in this example, so
+        // clear errors in case the Termination Code runs next
+        state.i2cStatus = 0x0000;
+
+        // Report the error and cancel the timeout trigger
+        bvReport |= BV_REPORT_I2C_ERROR;
+        //evhCancelTrigger(1);
+    }
+
+// Otherwise ...
+} else {
+
+    // Report timeout and cancel the interrupt GPIO trigger
+    bvReport |= BV_REPORT_INT_TIMEOUT;
+    //evhCancelTrigger(0);
+}
+
+// Alert the application if there is anything to report
+output.bvReport = bvReport;
+if (bvReport != 0) {
+    fwGenAlertInterrupt();
+}
+
+// Run-time logging
+rtlLogStructs(BV_RTL_LOG_OUTPUT);]]></sccode>
+        <sccode name="event1" init_power_mode="0"><![CDATA[]]></sccode>
+        <sccode name="event2" init_power_mode="0"><![CDATA[]]></sccode>
+        <sccode name="event3" init_power_mode="0"><![CDATA[]]></sccode>
+        <sccode name="execute" init_power_mode="0"><![CDATA[//gpioSetOutput(AUXIO_O_LED);
+
+i2cDeviceReadReg16MsbFirst(SI7021_I2C_ADDR, 0xE5; output.hum);
+i2cDeviceReadReg16MsbFirst(SI7021_I2C_ADDR, 0xE0; output.temp);
+
+//gpioClearOutput(AUXIO_O_LED);
+
+fwGenAlertInterrupt();
+fwScheduleTask(1);]]></sccode>
+        <sccode name="initialize" init_power_mode="0"><![CDATA[i2cDeviceWriteReg8(SI7021_I2C_ADDR, 0xE6, 0x00);
+fwScheduleTask(1);]]></sccode>
+        <sccode name="terminate" init_power_mode="0"><![CDATA[// Perform soft reset
+//i2cDeviceWriteReg8(HDC_I2C_ADDR, HDC_REG_CFG_RES_INT_AMM, BV_HDC_CFG_RES_SOFT_RESET);
+
+// Cancel the potentially active event triggers
+//evhCancelTrigger(0);
+//evhCancelTrigger(1);
+
+// Stop Timer 0
+//timer0Stop();
+
+// The currently enabled event trigger must be cancelled manually
+//evhCancelTrigger(0);]]></sccode>
+        <event_trigger active_count="2">0,0,2,3</event_trigger>
+        <tt_iter>run_execute,wait_10ms</tt_iter>
+        <tt_struct>output.hum,output.temp,state.i2cStatus</tt_struct>
+        <rtl_struct>output.hum,output.temp</rtl_struct>
+        <rtl_task_sel en="1" struct_log_list="output"/>
+    </task>
+</project>

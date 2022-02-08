@@ -1,0 +1,872 @@
+               .deffile adi_defs__1.asm
+               .deffile ddi_defs__1.asm
+               .deffile reg_defs__1.asm
+               .deffile sce_defs__1.asm
+
+               ; Number of supported tasks
+               .define TASK_COUNT      1
+
+               ; Sensor Controller clock frequency in active mode
+               .define ACTIVE_MODE_SCE_CLK_FREQ_MHZ    24
+
+               ; Resource-specified definitions, if any
+               .define AUXIO_I2C_SCL           14
+               .define AUXIO_I2C_SDA           13
+               .define I2C_BASE_DELAY          9
+               .define I2C_EXT_DELAY           4
+               .define I2C_STRETCH_TIMEOUT_US  10000
+               .define I2C_WAIT_STRETCH_DELAY  5
+
+
+               .segment begin "Framework"
+
+
+               VectorTable:
+                                       ; SW 0
+0000 ---- 140e                         jsr         PowerUp
+0001 ---- 0417                         jmp         TaskCtrlReqVector
+                                       ; SW 1
+0002 ---- 140e                         jsr         PowerUp
+0003 ---- 0438                         jmp         EventManTrigVector
+                                       ; PROG 0
+0004 ---- 140e                         jsr         PowerUp
+0005 ---- 0442                         jmp         AonRtcCh2Vector
+                                       ; PROG 1
+0006 ---- 140e                         jsr         PowerUp
+0007 ---- 045f                         jmp         Event0Vector
+                                       ; PROG 2
+0008 ---- 140e                         jsr         PowerUp
+0009 ---- 0468                         jmp         Event1Vector
+                                       ; PROG 3
+000a ---- 140e                         jsr         PowerUp
+000b ---- 0471                         jmp         Event2Vector
+                                       ; SW 2
+000c ---- 140e                         jsr         PowerUp
+000d ---- 047a                         jmp         TaskAlertAckVector
+
+
+
+
+               PowerUp:
+                                       ; Make sure that the last operation mode request has taken effect
+000e ---- 8953                         in          R0, [#IOP_SYSIF_OPMODEREQ]
+000f ---- 9954 /waitForOpmodeSync:     in          R1, [#IOP_SYSIF_OPMODEACK]
+0010 ---- 8d29                         cmp         R0, R1
+0011 ---- befd                         bneq        /waitForOpmodeSync
+
+                                       ; Deassert the power-down request
+0012 ---- 4553                         iobclr      #IOB_SYSIF_OPMODE_PD, [#IOP_SYSIF_OPMODEREQ]
+
+                                       ; Wait for it to take effect
+0013 ---- 2554 /waitForOpmodeAck:      iobtst      #IOB_SYSIF_OPMODE_PD, [#IOP_SYSIF_OPMODEACK]
+0014 ---- aefe                         biob1       /waitForOpmodeAck
+
+                                       ; Prevent wake-up events from propagating to the AON domain
+0015 ---- 445c                         iobclr      #0, [#IOP_SYSIF_WUGATE]
+
+               FwEmptyFunc:            ; Done
+0016 ---- adb7                         rts
+
+
+
+
+               TaskCtrlReqVector:
+                                       ; Clear wake-up event
+0017 ---- 745b                         iobset      #IOB_SYSIF_WUFLAGS_SW_WU0, [#IOP_SYSIF_WUFLAGSCLR]
+0018 ---- 545b                         iobclr      #IOB_SYSIF_WUFLAGS_SW_WU0, [#IOP_SYSIF_WUFLAGSCLR]
+
+                                       ; For each task ...
+0019 ---- 7000                         ld          R7, #0
+               /loop:
+                                           ; Save the task ID
+001a ---- 7ca2                             st          R7, [#fwCtrlInt/taskId]
+
+                                           ; Handle initialize request, if any
+001b ---- 68ab                             ld          R6, [#fwCtrlExt/bvTaskInitializeReq]
+001c ---- 009f                             ld          R0, #pFwTaskInitializeFuncTable
+001d ---- 1431                             jsr         /handleReq
+
+                                           ; Handle execute request, if any
+001e ---- 68ac                             ld          R6, [#fwCtrlExt/bvTaskExecuteReq]
+001f ---- 00a0                             ld          R0, #pFwTaskExecuteFuncTable
+0020 ---- 1431                             jsr         /handleReq
+
+                                           ; Handle terminate request, if any
+0021 ---- 68ad                             ld          R6, [#fwCtrlExt/bvTaskTerminateReq]
+0022 ---- 00a1                             ld          R0, #pFwTaskTerminateFuncTable
+0023 ---- 1431                             jsr         /handleReq
+
+                                           ; Move on to the next task
+0024 ---- 78a2                             ld          R7, [#fwCtrlInt/taskId]
+0025 ---- f801                             add         R7, #1
+
+0026 ---- fa01                         cmp         R7, #TASK_COUNT
+0027 ---- bef2                         bneq        /loop
+
+                                       ; Update which tasks are ...
+0028 ---- 78a9                         ld          R7, [#fwCtrlExt/bvActiveTasks]
+                                       ; ... currently active ...
+0029 ---- 68ab                         ld          R6, [#fwCtrlExt/bvTaskInitializeReq]
+002a ---- fd0e                         or          R7, R6
+                                       ; ... and inactive ...
+002b ---- 68ad                         ld          R6, [#fwCtrlExt/bvTaskTerminateReq]
+002c ---- ed92                         inv         R6
+002d ---- fd06                         and         R7, R6
+002e ---- 7ca9                         st          R7, [#fwCtrlExt/bvActiveTasks]
+
+                                       ; We're READY for another request
+002f ---- 6440                         iobset      #IOB_EVCTL_SWEV_READY, [#IOP_EVCTL_SWEVSET]
+
+                                       ; Generate an ALERT interrupt (if requested) and return to sleep
+0030 ---- 047f                         jmp         PowerDownSequence;
+
+               /handleReq:
+                                       ; Restore the task ID, and load the function pointer (here to avoid pipeline hazard)
+0031 ---- 78a2                         ld          R7, [#fwCtrlInt/taskId]
+0032 ---- 8f1f                         ld          R0, [R7+R0]
+
+                                       ; Skip this request?
+0033 ---- ed8f                         lsr         R6, R7
+0034 ---- ec01                         tst         R6, #0x0001
+0035 ---- be01                         bnz         /noSkip
+0036 ---- adb7                             rts
+               /noSkip:
+                                       ; Make the call by jump, with return (rts) in the "called" function
+0037 ---- 8db7                         jmp         R0
+
+
+
+
+               EventManTrigVector:
+                                       ; Clear wake-up event
+0038 ---- 755b                         iobset      #IOB_SYSIF_WUFLAGS_SW_WU1, [#IOP_SYSIF_WUFLAGSCLR]
+0039 ---- 555b                         iobclr      #IOB_SYSIF_WUFLAGS_SW_WU1, [#IOP_SYSIF_WUFLAGSCLR]
+
+                                       ; Reconfigure the programmable wake-up, and trigger it
+003a ---- 78a7                         ld          R7, [#fwCtrlInt/progwucfgManTrigReg]
+003b ---- 60bf                         ld          R6, #(BV_SYSIF_PROGWUCFG_POL | SYSIF_PROGWUCFG_SRC_NO_EVENT)
+003c ---- ef27                         out         R6, [R7]
+003d ---- e240                         or          R6, #BV_SYSIF_PROGWUCFG_EN
+003e ---- ef27                         out         R6, [R7]
+
+                                       ; Indicate completion
+003f ---- 7000                         ld          R7, #0x0000
+0040 ---- 7ca7                         st          R7, [#fwCtrlInt/progwucfgManTrigReg]
+
+                                       ; Generate an ALERT interrupt (if requested) and return to sleep
+0041 ---- 047f                         jmp         PowerDownSequence;
+
+
+
+
+               AonRtcCh2Vector:
+                                       ; Start clearing the RTC event
+0042 ---- 6477                         iobset      #0, [#IOP_SYSIF_RTCEVCLR]
+
+                                       ; For each task (R0 is the current task ID) ...
+0043 ---- 0000                         ld          R0, #0
+               /loop:
+                                           ; ... that is active ...
+0044 ---- 18a9                             ld          R1, [#fwCtrlExt/bvActiveTasks]
+0045 ---- 9d88                             lsr         R1, R0
+0046 ---- 9c01                             tst         R1, #0x0001
+0047 ---- b60e                             bz          /skip
+
+                                               ; Fetch number of RTC intervals until next execution
+0048 ---- 109e                                 ld          R1, #pFwTaskExecuteScheduleTable
+0049 ---- af19                                 ld          R2, [R1+R0]
+
+                                               ; If not already 0, decrement and store. If then 0 ...
+004a ---- aa00                                 cmp         R2, #0
+004b ---- b60a                                 beq         /skip
+004c ---- a8ff                                 add         R2, #-1
+004d ---- af39                                 st          R2, [R1+R0]
+004e ---- be07                                 bnz         /skip
+
+                                                   ; ... execute the task
+004f ---- 0ca2                                     st          R0, [#fwCtrlInt/taskId]
+0050 8600 88a0                                     add         R0, #pFwTaskExecuteFuncTable
+0052 ---- 8f08                                     ld          R0, [R0]
+                                                   ; Insert NOP to avoid pipeline hazard
+0053 ---- fd47                                     nop
+0054 ---- 9db7                                     jsr         R0
+0055 ---- 08a2                                     ld          R0, [#fwCtrlInt/taskId]
+               /skip:
+                                           ; Move on to the next task
+0056 ---- 8801                             add         R0, #1
+
+0057 ---- 8a01                         cmp         R0, #TASK_COUNT
+0058 ---- beeb                         bneq        /loop
+
+                                       ; Wait for the RTC CH2 event clearing to finish
+0059 ---- 254f /waitOnRtcEvClr:        iobtst      #IOB_EVCTL_EVSTAT2L_AON_RTC_CH2, [#IOP_EVCTL_EVSTAT2L]
+005a ---- aefe                         biob1       /waitOnRtcEvClr
+
+                                       ; Clear event edge detector
+005b ---- 645b                         iobset      #IOB_SYSIF_WUFLAGS_PROG_WU0, [#IOP_SYSIF_WUFLAGSCLR]
+005c ---- 445b                         iobclr      #IOB_SYSIF_WUFLAGS_PROG_WU0, [#IOP_SYSIF_WUFLAGSCLR]
+
+                                       ; End clearing the RTC event
+005d ---- 4477                         iobclr      #0, [#IOP_SYSIF_RTCEVCLR]
+
+                                       ; Generate an ALERT interrupt (if requested) and return to sleep
+005e ---- 047f                         jmp         PowerDownSequence;
+
+
+
+
+               Event0Vector:
+                                       ; Disable and clear wake-up event
+005f ---- 5656                         iobclr      #IOB_SYSIF_PROGWUCFG_EN,        [#IOP_SYSIF_PROGWU1CFG] ; Disable source
+0060 ---- 655b                         iobset      #IOB_SYSIF_WUFLAGS_PROG_WU1,    [#IOP_SYSIF_WUFLAGSCLR] ; Clear edge detector
+0061 ---- 455b                         iobclr      #IOB_SYSIF_WUFLAGS_PROG_WU1,    [#IOP_SYSIF_WUFLAGSCLR]
+
+                                       ; Set the task ID and active event index
+0062 ---- 0000                         ld          R0, #0
+0063 ---- 0ca2                         st          R0, [#fwCtrlInt/taskId]
+0064 ---- 0001                         ld          R0, #(1 << 0)
+0065 ---- 0ca3                         st          R0, [#fwCtrlInt/bvActiveEvent]
+
+                                       ; Jump to the event task code
+0066 ---- 1416                         jsr         FwEmptyFunc
+
+                                       ; Generate an ALERT interrupt (if requested) and return to sleep
+0067 ---- 047f                         jmp         PowerDownSequence;
+
+
+
+
+               Event1Vector:
+                                       ; Disable and clear wake-up event
+0068 ---- 5657                         iobclr      #IOB_SYSIF_PROGWUCFG_EN,        [#IOP_SYSIF_PROGWU2CFG] ; Disable source
+0069 ---- 665b                         iobset      #IOB_SYSIF_WUFLAGS_PROG_WU2,    [#IOP_SYSIF_WUFLAGSCLR] ; Clear edge detector
+006a ---- 465b                         iobclr      #IOB_SYSIF_WUFLAGS_PROG_WU2,    [#IOP_SYSIF_WUFLAGSCLR]
+
+                                       ; Set the task ID and active event index
+006b ---- 0000                         ld          R0, #0
+006c ---- 0ca2                         st          R0, [#fwCtrlInt/taskId]
+006d ---- 0002                         ld          R0, #(1 << 1)
+006e ---- 0ca3                         st          R0, [#fwCtrlInt/bvActiveEvent]
+
+                                       ; Jump to the event task code
+006f ---- 1416                         jsr         FwEmptyFunc
+
+                                       ; Generate an ALERT interrupt (if requested) and return to sleep
+0070 ---- 047f                         jmp         PowerDownSequence;
+
+
+
+
+               Event2Vector:
+                                       ; Disable and clear wake-up event
+0071 ---- 5658                         iobclr      #IOB_SYSIF_PROGWUCFG_EN,        [#IOP_SYSIF_PROGWU3CFG] ; Disable source
+0072 ---- 675b                         iobset      #IOB_SYSIF_WUFLAGS_PROG_WU3,    [#IOP_SYSIF_WUFLAGSCLR] ; Clear edge detector
+0073 ---- 475b                         iobclr      #IOB_SYSIF_WUFLAGS_PROG_WU3,    [#IOP_SYSIF_WUFLAGSCLR]
+
+                                       ; Set the task ID and active event index
+0074 ---- 0000                         ld          R0, #0
+0075 ---- 0ca2                         st          R0, [#fwCtrlInt/taskId]
+0076 ---- 0004                         ld          R0, #(1 << 2)
+0077 ---- 0ca3                         st          R0, [#fwCtrlInt/bvActiveEvent]
+
+                                       ; Jump to the event task code
+0078 ---- 1416                         jsr         FwEmptyFunc
+
+                                       ; Generate an ALERT interrupt (if requested) and return to sleep
+0079 ---- 047f                         jmp         PowerDownSequence;
+
+
+
+
+               TaskAlertAckVector:
+                                       ; Clear wake-up event
+007a ---- 765b                         iobset      #IOB_SYSIF_WUFLAGS_SW_WU2, [#IOP_SYSIF_WUFLAGSCLR]
+007b ---- 565b                         iobclr      #IOB_SYSIF_WUFLAGS_SW_WU2, [#IOP_SYSIF_WUFLAGSCLR]
+
+                                       ; Re-enable generation of ALERT interrupts
+007c 86ff 03ff                         ld          R0, #0xFFFF
+007e ---- 0ca5                         st          R0, [#fwCtrlInt/alertGenMask]
+
+                                       ; Generate an ALERT interrupt (if requested) and return to sleep
+                                       ; -> Fall through
+
+
+
+
+               PowerDownSequence:
+                                       ; Let wake-up events propagate to the AON domain
+007f ---- 645c                         iobset      #0, [#IOP_SYSIF_WUGATE]
+
+                                       ; Do we have any ALERT-generating flags pending?
+0080 ---- 78a4                         ld          R7, [#fwCtrlInt/bvTaskIoAlert]
+
+                                       ; Skip if the last I/O ALERT interrupt has not been acknowledged
+0081 ---- 68a5                         ld          R6, [#fwCtrlInt/alertGenMask]
+0082 ---- ed37                         tst         R6, R7
+0083 ---- b605                         bz          /skipAlertGen
+
+                                           ; Transfer I/O flags from internal to external
+0084 ---- 0000                             ld          R0, #0
+0085 ---- 0ca4                             st          R0, [#fwCtrlInt/bvTaskIoAlert]
+0086 ---- 7caa                             st          R7, [#fwCtrlExt/bvTaskIoAlert]
+
+                                           ; Generate the ALERT interrupt, and clear the generation mask
+0087 ---- 6540                             iobset      #IOB_EVCTL_SWEV_ALERT, [#IOP_EVCTL_SWEVSET]
+0088 ---- 0ca5                             st          R0, [#fwCtrlInt/alertGenMask]
+               /skipAlertGen:
+                                       ; Set initial power mode for next executed vector
+                                       ; -> Only at initialization
+
+                                       ; If there are no unacknowledged ALERTs and no vectors pending ...
+0089 ---- 78a5                         ld          R7, [#fwCtrlInt/alertGenMask]
+008a ---- 68a6                         ld          R6, [#fwCtrlInt/alertCanPdAuxMask]
+008b ---- fd0e                         or          R7, R6
+008c ---- f801                         add         R7, #1 ; 0xFFFF -> 0x0000
+008d ---- e95a                         in          R6, [#IOP_SYSIF_WUFLAGS]
+008e ---- fd0e                         or          R7, R6
+008f ---- be01                         bnz         /noPowerDown
+
+                                           ; Assert the power-down request
+0090 ---- 6553                             iobset      #IOB_SYSIF_OPMODE_PD, [#IOP_SYSIF_OPMODEREQ]
+               /noPowerDown:
+                                       ; Sleep until the next event
+0091 ---- bdb7 sleepInstr:             sleep
+
+
+
+
+               PwrRequestAndWaitForActiveMode:
+                                       ; Update Reference DAC clock divider before entering active mode
+0092 ---- 700b                         ld          R7, #((ACTIVE_MODE_SCE_CLK_FREQ_MHZ / 2) - 1)
+0093 ---- fb96                         out         R7, [#IOP_ANAIF_DACSMPLCFG0]
+
+                                       ; Deassert the low-power request
+0094 ---- 4453                         iobclr      #IOB_SYSIF_OPMODE_LP, [#IOP_SYSIF_OPMODEREQ]
+
+                                       ; Wait for it to take effect
+0095 ---- 2454 /waitForOpmodeAck:      iobtst      #IOB_SYSIF_OPMODE_LP, [#IOP_SYSIF_OPMODEACK]
+0096 ---- aefe                         biob1       /waitForOpmodeAck
+
+                                       ; Done
+0097 ---- adb7                         rts
+
+
+
+
+               PwrRequestAndWaitForLowPowerMode:
+                                       ; Assert the low-power request
+0098 ---- 6453                         iobset      #IOB_SYSIF_OPMODE_LP, [#IOP_SYSIF_OPMODEREQ]
+
+                                       ; Wait for it to take effect
+0099 ---- 2454 /waitForOpmodeAck:      iobtst      #IOB_SYSIF_OPMODE_LP, [#IOP_SYSIF_OPMODEACK]
+009a ---- a6fe                         biob0       /waitForOpmodeAck
+
+                                       ; Update Reference DAC clock divider after leaving active mode
+009b ---- 7000                         ld          R7, #(1 - 1)
+009c ---- fb96                         out         R7, [#IOP_ANAIF_DACSMPLCFG0]
+
+                                       ; Done
+009d ---- adb7                         rts
+
+
+
+
+               ; RTC ticks until next execution, one word for each task
+               pFwTaskExecuteScheduleTable:
+009e ---- 0000                         dw          #0
+
+               ; Task code function pointers for each task code block, one word for each task
+               pFwTaskInitializeFuncTable:
+009f ---- 00b5                         dw          #i2cTempAndHumiditySensor/initialize
+               pFwTaskExecuteFuncTable:
+00a0 ---- 00ce                         dw          #i2cTempAndHumiditySensor/execute
+               pFwTaskTerminateFuncTable:
+00a1 ---- 0112                         dw          #i2cTempAndHumiditySensor/terminate
+
+               ; Run-time logging log requests and masks, one bit for each struct, one word for each task
+               pRtlTaskLogReqTable:
+               ; (Run-time logging is not used in this project)
+               pRtlTaskLogMaskTable:
+               ; (Run-time logging is not used in this project)
+
+
+               ; Internal control data
+               fwCtrlInt:
+00a2 ---- 0000 /taskId:                dw          #0      ; ID of the currently running task
+00a3 ---- 0000 /bvActiveEvent:         dw          #0      ; Bit-vector indicating index of the currently active event trigger
+00a4 ---- 0000 /bvTaskIoAlert:         dw          #0x0000 ; LSB = Normal data exchange, MSB = Overflow or underflow
+00a5 ---- ffff /alertGenMask:          dw          #0xFFFF ; Can generate an ALERT interrupt now? (0xFFFF = yes, 0x0000 = no)
+00a6 ---- 0000 /alertCanPdAuxMask:     dw          #0x0000 ; Can power down AUX domain after ALERT interrupt generation? (0xFFFF = yes, 0x0000 = no)
+00a7 ---- 0000 /progwucfgManTrigReg:   dw          #0x0000 ; Address of PROGWUnCFG register to be triggered manually by EventManTriggerVector
+00a8 ---- 0000 /rtlStructLockReq:      dw          #0x0000 ; Run-time logging struct lock request (0=idle -> 1=requested -> 2=ready -> access -> 0=idle)
+
+               ; External control data, shared with the driver
+               fwCtrlExt:
+00a9 ---- 0000 /bvActiveTasks:         dw          #0x0000 ; Indicates which tasks are currently active
+00aa ---- 0000 /bvTaskIoAlert:         dw          #0x0000 ; LSB = Normal data exchange, MSB = Overflow or underflow
+00ab ---- 0000 /bvTaskInitializeReq:   dw          #0x0000 ; Requests tasks to start
+00ac ---- 0000 /bvTaskExecuteReq:      dw          #0x0000 ; Requests tasks to execute once immediately
+00ad ---- 0000 /bvTaskTerminateReq:    dw          #0x0000 ; Requests tasks to stop
+
+
+               .segment end "Framework"
+
+
+               fwTaskDataStructures:
+               .segment begin "Task: I2C Temp and Humidity Sensor"
+               i2cTempAndHumiditySensor/cfg:
+               i2cTempAndHumiditySensor/input:
+               i2cTempAndHumiditySensor/output:
+               i2cTempAndHumiditySensor/output/byte1:
+00ae ---- 0000                         dw          #0
+               i2cTempAndHumiditySensor/output/byte2:
+00af ---- 0000                         dw          #0
+               i2cTempAndHumiditySensor/output/byte3:
+00b0 ---- 0000                         dw          #0
+               i2cTempAndHumiditySensor/output/byte4:
+00b1 ---- 0000                         dw          #0
+               i2cTempAndHumiditySensor/output/byte5:
+00b2 ---- 0000                         dw          #0
+               i2cTempAndHumiditySensor/output/status:
+00b3 ---- 0000                         dw          #0
+               i2cTempAndHumiditySensor/state:
+               i2cTempAndHumiditySensor/state/i2cStatus:
+00b4 ---- 0000                         dw          #0
+               .segment end "Task: I2C Temp and Humidity Sensor"
+
+
+               .segment begin "Task: I2C Temp and Humidity Sensor"
+               i2cTempAndHumiditySensor/initialize:
+               ;? // Perform soft reset
+               ;?
+               ;?
+               ;? i2cStart();
+00b5 ---- 6000                         ld          R6, #0x0000
+00b6 ---- 1519                         jsr         I2cStart
+00b7 ---- 6cb4                         st          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+               ;? i2cTx(I2C_ADDR | I2C_OP_WRITE);
+00b8 ---- 7070                         ld          R7, #112
+00b9 ---- 68b4                         ld          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+00ba ---- 1531                         jsr         I2cTxByte
+00bb ---- 6cb4                         st          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+               ;? i2cTx(0xE1);
+00bc ---- 70e1                         ld          R7, #225
+00bd ---- 68b4                         ld          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+00be ---- 1531                         jsr         I2cTxByte
+00bf ---- 6cb4                         st          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+               ;? i2cTx(0x08);
+00c0 ---- 7008                         ld          R7, #8
+00c1 ---- 68b4                         ld          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+00c2 ---- 1531                         jsr         I2cTxByte
+00c3 ---- 6cb4                         st          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+               ;? i2cTx(0x00);
+00c4 ---- 7000                         ld          R7, #0
+00c5 ---- 68b4                         ld          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+00c6 ---- 1531                         jsr         I2cTxByte
+00c7 ---- 6cb4                         st          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+               ;? i2cStop();
+00c8 ---- 68b4                         ld          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+00c9 ---- 154f                         jsr         I2cStop
+00ca ---- 6cb4                         st          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+               ;?
+               ;?
+               ;? //gpioCfgMode(AUXIO_O_LED,GPIO_MODE_OUTPUT);
+               ;? //gpioClearOutput(AUXIO_O_LED);
+               ;? fwScheduleTask(1);
+00cb ---- 0001                         ld          R0, #1
+00cc ---- 0c9e                         st          R0, [#(pFwTaskExecuteScheduleTable + 0)]
+               i2cTempAndHumiditySensor/initializeDone:
+00cd ---- adb7                         rts
+
+
+
+
+               i2cTempAndHumiditySensor/execute:
+               ;? //gpioSetOutput(AUXIO_O_LED);
+               ;?
+               ;? i2cStart();
+00ce ---- 6000                         ld          R6, #0x0000
+00cf ---- 1519                         jsr         I2cStart
+00d0 ---- 6cb4                         st          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+               ;?
+               ;? i2cTx(I2C_ADDR | I2C_OP_READ);
+00d1 ---- 7071                         ld          R7, #113
+00d2 ---- 68b4                         ld          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+00d3 ---- 1531                         jsr         I2cTxByte
+00d4 ---- 6cb4                         st          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+               ;? i2cRxAck(output.status); // HDC_REG_TEMP_L
+00d5 ---- 7000                         ld          R7, #0x0000
+00d6 ---- 68b4                         ld          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+00d7 ---- 155a                         jsr         I2cRxByte
+00d8 ---- 6cb4                         st          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+00d9 ---- 7cb3                         st          R7, [#i2cTempAndHumiditySensor/output/status]
+               ;? i2cRxAck(output.byte1); // HDC_REG_TEMP_L
+00da ---- 7000                         ld          R7, #0x0000
+00db ---- 68b4                         ld          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+00dc ---- 155a                         jsr         I2cRxByte
+00dd ---- 6cb4                         st          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+00de ---- 7cae                         st          R7, [#i2cTempAndHumiditySensor/output/byte1]
+               ;? i2cRxAck(output.byte2); // HDC_REG_TEMP_L
+00df ---- 7000                         ld          R7, #0x0000
+00e0 ---- 68b4                         ld          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+00e1 ---- 155a                         jsr         I2cRxByte
+00e2 ---- 6cb4                         st          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+00e3 ---- 7caf                         st          R7, [#i2cTempAndHumiditySensor/output/byte2]
+               ;? i2cRxAck(output.byte3); // HDC_REG_TEMP_L
+00e4 ---- 7000                         ld          R7, #0x0000
+00e5 ---- 68b4                         ld          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+00e6 ---- 155a                         jsr         I2cRxByte
+00e7 ---- 6cb4                         st          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+00e8 ---- 7cb0                         st          R7, [#i2cTempAndHumiditySensor/output/byte3]
+               ;? i2cRxAck(output.byte4); // HDC_REG_TEMP_L
+00e9 ---- 7000                         ld          R7, #0x0000
+00ea ---- 68b4                         ld          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+00eb ---- 155a                         jsr         I2cRxByte
+00ec ---- 6cb4                         st          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+00ed ---- 7cb1                         st          R7, [#i2cTempAndHumiditySensor/output/byte4]
+               ;? i2cRxNack(output.byte5); // HDC_REG_TEMP_L
+00ee ---- 7001                         ld          R7, #0x0001
+00ef ---- 68b4                         ld          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+00f0 ---- 155a                         jsr         I2cRxByte
+00f1 ---- 6cb4                         st          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+00f2 ---- 7cb2                         st          R7, [#i2cTempAndHumiditySensor/output/byte5]
+               ;?
+               ;? i2cStop();
+00f3 ---- 68b4                         ld          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+00f4 ---- 154f                         jsr         I2cStop
+00f5 ---- 6cb4                         st          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+               ;?
+               ;? i2cStart();
+00f6 ---- 6000                         ld          R6, #0x0000
+00f7 ---- 1519                         jsr         I2cStart
+00f8 ---- 6cb4                         st          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+               ;?
+               ;? i2cTx(I2C_ADDR | I2C_OP_WRITE);
+00f9 ---- 7070                         ld          R7, #112
+00fa ---- 68b4                         ld          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+00fb ---- 1531                         jsr         I2cTxByte
+00fc ---- 6cb4                         st          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+               ;? i2cTx(0xAC);
+00fd ---- 70ac                         ld          R7, #172
+00fe ---- 68b4                         ld          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+00ff ---- 1531                         jsr         I2cTxByte
+0100 ---- 6cb4                         st          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+               ;? i2cTx(0x33);
+0101 ---- 7033                         ld          R7, #51
+0102 ---- 68b4                         ld          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+0103 ---- 1531                         jsr         I2cTxByte
+0104 ---- 6cb4                         st          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+               ;? i2cTx(0x00);
+0105 ---- 7000                         ld          R7, #0
+0106 ---- 68b4                         ld          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+0107 ---- 1531                         jsr         I2cTxByte
+0108 ---- 6cb4                         st          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+               ;? i2cStop();
+0109 ---- 68b4                         ld          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+010a ---- 154f                         jsr         I2cStop
+010b ---- 6cb4                         st          R6, [#i2cTempAndHumiditySensor/state/i2cStatus]
+               ;?
+               ;?
+               ;? //gpioClearOutput(AUXIO_O_LED);
+               ;?
+               ;? fwGenAlertInterrupt();
+010c ---- 08a4                         ld          R0, [#fwCtrlInt/bvTaskIoAlert]
+010d ---- 8201                         or          R0, #(1 << 0)
+010e ---- 0ca4                         st          R0, [#fwCtrlInt/bvTaskIoAlert]
+               ;? fwScheduleTask(1);
+010f ---- 0001                         ld          R0, #1
+0110 ---- 0c9e                         st          R0, [#(pFwTaskExecuteScheduleTable + 0)]
+               i2cTempAndHumiditySensor/executeDone:
+0111 ---- adb7                         rts
+
+
+
+
+               i2cTempAndHumiditySensor/terminate:
+               ;?
+               i2cTempAndHumiditySensor/terminateDone:
+0112 ---- adb7                         rts
+               .segment end "Task: I2C Temp and Humidity Sensor"
+
+
+               .segment begin "Procedure Library"
+               ; CLOBBERS:
+               ;     R5
+               I2cRepeatedStart:
+                                       ; Wait T_LOW (SDA is already pull-up)
+0113 ---- 53f4                         ld          R5, #-((I2C_BASE_DELAY + I2C_EXT_DELAY) - (1))
+0114 ---- 151e                         jsr         I2cWaitDelay
+
+                                       ; SCL = pull-up
+0115 ---- 76bb                         iobset      #(AUXIO_I2C_SCL & 0x7), [#(IOP_AIODIO0_GPIODOUT + (AUXIO_I2C_SCL >> 3))]
+
+                                       ; Wait for SCL stretching to end or time out
+0116 ---- 1521                         jsr         I2cWaitSclStretch
+
+                                       ; Wait T_SU_STA
+0117 ---- 53f4                         ld          R5, #-((I2C_BASE_DELAY + I2C_EXT_DELAY) - (1))
+0118 ---- 151e                         jsr         I2cWaitDelay
+               I2cStart:
+                                       ; SDA = driven low
+0119 ---- 55bb                         iobclr      #(AUXIO_I2C_SDA & 0x7), [#(IOP_AIODIO0_GPIODOUT + (AUXIO_I2C_SDA >> 3))]
+
+                                       ; Wait T_HD_STA
+011a ---- 53f8                         ld          R5, #-((I2C_BASE_DELAY) - (1))
+011b ---- 151e                         jsr         I2cWaitDelay
+
+                                       ; SCL = driven low
+011c ---- 56bb                         iobclr      #(AUXIO_I2C_SCL & 0x7), [#(IOP_AIODIO0_GPIODOUT + (AUXIO_I2C_SCL >> 3))]
+
+                                       ; Done
+011d ---- adb7                         rts
+
+
+
+
+               ; PARAMETERS
+               ;     R5 = Delay excluding the I2cWaitDelay() call, in instruction cycles
+               ;
+               ; CLOBBERS:
+               ;     R5
+               I2cWaitDelay:
+                                       ; Wait for the specified number of cycles
+011e ---- d802 /waitLoop:                  add         R5, #2
+011f ---- defe                         bneg        /waitLoop
+
+                                       ; Done
+0120 ---- adb7                         rts
+
+
+
+
+               ; PARAMETERS:
+               ;     R6 = Status flags
+               ;
+               ; RETURN VALUES:
+               ;     R6 = Updated status flags
+               ;
+               ; CLOBBERS:
+               ;     R5
+               I2cWaitSclStretch:
+                                       ; Load the timeout (up to 20 ms) loop counter = configured number of us
+0121 86d8 50f0                         ld          R5, #(-I2C_STRETCH_TIMEOUT_US)
+               /waitLoop:
+                                           ; If SCL is high, we're done
+0123 ---- 36bf                             iobtst      #(AUXIO_I2C_SCL & 0x7), [#(IOP_AIODIO0_GPIODIN + (AUXIO_I2C_SCL >> 3))]
+0124 ---- ae0b                             biob1       /done
+                                           ; Unroll the loop to 12 instructions = 1 per loop for faster response
+0125 ---- 36bf                             iobtst      #(AUXIO_I2C_SCL & 0x7), [#(IOP_AIODIO0_GPIODIN + (AUXIO_I2C_SCL >> 3))]
+0126 ---- ae09                             biob1       /done
+0127 ---- 36bf                             iobtst      #(AUXIO_I2C_SCL & 0x7), [#(IOP_AIODIO0_GPIODIN + (AUXIO_I2C_SCL >> 3))]
+0128 ---- ae07                             biob1       /done
+0129 ---- 36bf                             iobtst      #(AUXIO_I2C_SCL & 0x7), [#(IOP_AIODIO0_GPIODIN + (AUXIO_I2C_SCL >> 3))]
+012a ---- ae05                             biob1       /done
+012b ---- 36bf                             iobtst      #(AUXIO_I2C_SCL & 0x7), [#(IOP_AIODIO0_GPIODIN + (AUXIO_I2C_SCL >> 3))]
+012c ---- ae03                             biob1       /done
+
+012d ---- d801                         add         R5, #1;
+012e ---- bef4                         bnz         /waitLoop
+
+               /timeout:               ; Timeout has occurred, so OR it into the flags and bail out
+012f ---- e202                         or          R6, #0x0002
+
+               /done:                  ; Done
+0130 ---- adb7                         rts
+
+
+
+
+               ; PARAMETERS:
+               ;     R7 = TX byte shift register
+               ;     R6 = Status flags
+               ;
+               ; RETURN VALUES:
+               ;     R7 = Updated TX byte shift register
+               ;     R6 = Updated status flags
+               ;
+               ; CLOBBERS:
+               ;     R5
+               I2cTxByte:
+                                       ; Bail out if an error has occurred
+0131 ---- ea00                         cmp         R6, #0
+0132 ---- be1b                         bnz         /done
+
+
+                                       ; Transmit each bit in the data byte ...
+0133 ---- b50e                         loop        #8, /byteLoopEnd
+
+                                           ; Output the bit to SDA
+0134 ---- fda1                             lsl         R7, #1
+0135 8601 fc00                             tst         R7, #0x0100
+0137 ---- b602                             bz          /dataSdaLow
+0138 ---- 75bb /dataSdaHigh:                   iobset      #(AUXIO_I2C_SDA & 0x7), [#(IOP_AIODIO0_GPIODOUT + (AUXIO_I2C_SDA >> 3))]
+0139 ---- 8e02                             bra         /dataSdaDone
+013a ---- 55bb /dataSdaLow:                    iobclr      #(AUXIO_I2C_SDA & 0x7), [#(IOP_AIODIO0_GPIODOUT + (AUXIO_I2C_SDA >> 3))]
+013b ---- fd47                             nop
+               /dataSdaDone:
+                                           ; Wait T_LOW
+013c ---- 53fa                             ld          R5, #-((I2C_BASE_DELAY + I2C_EXT_DELAY) - (7))
+013d ---- 151e                             jsr         I2cWaitDelay
+
+                                           ; SCL = pull-up
+013e ---- 76bb                             iobset      #(AUXIO_I2C_SCL & 0x7), [#(IOP_AIODIO0_GPIODOUT + (AUXIO_I2C_SCL >> 3))]
+
+                                           ; Wait for SCL stretching to end or time out
+013f ---- 1521                             jsr         I2cWaitSclStretch
+
+                                           ; Wait T_HIGH
+0140 ---- 53fd                             ld          R5, #-(I2C_BASE_DELAY - (I2C_WAIT_STRETCH_DELAY + 1))
+0141 ---- 151e                             jsr         I2cWaitDelay
+
+                                           ; SCL = driven low
+0142 ---- 56bb                             iobclr      #(AUXIO_I2C_SCL & 0x7), [#(IOP_AIODIO0_GPIODOUT + (AUXIO_I2C_SCL >> 3))]
+               /byteLoopEnd:
+
+                                       ; Receive the ACK bit
+                                       ; SDA = pull-up
+0143 ---- 75bb                         iobset      #(AUXIO_I2C_SDA & 0x7), [#(IOP_AIODIO0_GPIODOUT + (AUXIO_I2C_SDA >> 3))]
+
+                                       ; Wait T_LOW
+0144 ---- 53f4                         ld          R5, #-((I2C_BASE_DELAY + I2C_EXT_DELAY) - (1))
+0145 ---- 151e                         jsr         I2cWaitDelay
+
+                                       ; SCL = pull-up
+0146 ---- 76bb                         iobset      #(AUXIO_I2C_SCL & 0x7), [#(IOP_AIODIO0_GPIODOUT + (AUXIO_I2C_SCL >> 3))]
+
+                                       ; Wait for SCL stretching to end or time out
+0147 ---- 1521                         jsr         I2cWaitSclStretch
+
+                                       ; Wait T_HIGH
+0148 ---- 53fa                         ld          R5, #-((I2C_BASE_DELAY) - (3))
+0149 ---- 151e                         jsr         I2cWaitDelay
+
+                                       ; Read and store the SDA value in the status word
+014a ---- 35bf                         iobtst      #(AUXIO_I2C_SDA & 0x7), [#(IOP_AIODIO0_GPIODIN + (AUXIO_I2C_SDA >> 3))]
+014b ---- a601                         biob0       /ackSdaLow
+014c ---- e201                             or          R6, #0x01
+               /ackSdaLow:
+                                       ; SCL = driven low
+014d ---- 56bb                         iobclr      #(AUXIO_I2C_SCL & 0x7), [#(IOP_AIODIO0_GPIODOUT + (AUXIO_I2C_SCL >> 3))]
+
+
+               /done:                  ; Done
+014e ---- adb7                         rts
+
+
+
+
+               ; CLOBBERS:
+               ;     R5
+               I2cStop:
+                                       ; SDA = driven low
+014f ---- 55bb                         iobclr      #(AUXIO_I2C_SDA & 0x7), [#(IOP_AIODIO0_GPIODOUT + (AUXIO_I2C_SDA >> 3))]
+
+                                       ; Wait T_LOW
+0150 ---- 53f4                         ld          R5, #-((I2C_BASE_DELAY + I2C_EXT_DELAY) - (1))
+0151 ---- 151e                         jsr         I2cWaitDelay
+
+                                       ; SCL = pull-up
+0152 ---- 76bb                         iobset      #(AUXIO_I2C_SCL & 0x7), [#(IOP_AIODIO0_GPIODOUT + (AUXIO_I2C_SCL >> 3))]
+
+                                       ; Wait for SCL stretching to end or time out
+0153 ---- 1521                         jsr         I2cWaitSclStretch
+
+                                       ; Wait T_SU_STO
+0154 ---- 53fd                         ld          R5, #-((I2C_BASE_DELAY) - (I2C_WAIT_STRETCH_DELAY + 1))
+0155 ---- 151e                         jsr         I2cWaitDelay
+
+                                       ; SDA = pull-up
+0156 ---- 75bb                         iobset      #(AUXIO_I2C_SDA & 0x7), [#(IOP_AIODIO0_GPIODOUT + (AUXIO_I2C_SDA >> 3))]
+
+                                       ; Wait T_BUF
+0157 ---- 53f5                         ld          R5, #-((I2C_BASE_DELAY + I2C_EXT_DELAY) - (2))
+0158 ---- 151e                         jsr         I2cWaitDelay
+
+                                       ; Done
+0159 ---- adb7                         rts
+
+
+
+
+               ; PARAMETERS:
+               ;     R7 = Acknowledgment bit value, 0x0000 to transmit ACK, 0x0001 to transmit NAK
+               ;     R6 = Status flags
+               ;
+               ; RETURN VALUES:
+               ;     R7 = RX byte shift register
+               ;     R6 = Updated status flags
+               ;
+               ; CLOBBERS:
+               ;     R5
+               I2cRxByte:
+                                       ; Bail out if an error has occurred
+015a ---- ea00                         cmp         R6, #0
+015b ---- be1c                         bnz         /done
+
+
+                                       ; Receive each bit in the data byte ...
+015c ---- b50b                         loop        #8, /byteLoopEnd
+
+                                           ; SDA = pull-up
+015d ---- 75bb                             iobset      #(AUXIO_I2C_SDA & 0x7), [#(IOP_AIODIO0_GPIODOUT + (AUXIO_I2C_SDA >> 3))]
+
+                                           ; Wait T_LOW
+015e ---- 53f5                             ld          R5, #-((I2C_BASE_DELAY + I2C_EXT_DELAY) - (2))
+015f ---- 151e                             jsr         I2cWaitDelay
+
+                                           ; SCL = pull-up
+0160 ---- 76bb                             iobset      #(AUXIO_I2C_SCL & 0x7), [#(IOP_AIODIO0_GPIODOUT + (AUXIO_I2C_SCL >> 3))]
+
+                                           ; Wait for SCL stretching to end or time out
+0161 ---- 1521                             jsr         I2cWaitSclStretch
+
+                                           ; Wait T_HIGH
+0162 ---- 53ff                             ld          R5, #-((I2C_BASE_DELAY) - (I2C_WAIT_STRETCH_DELAY + 3))
+0163 ---- 151e                             jsr         I2cWaitDelay
+
+                                           ; Read and store SDA
+0164 ---- fda1                             lsl         R7, #1
+0165 ---- 35bf                             iobtst      #(AUXIO_I2C_SDA & 0x7), [#(IOP_AIODIO0_GPIODIN + (AUXIO_I2C_SDA >> 3))]
+0166 ---- a601                             biob0       /dataSdaLow
+0167 ---- f201                                 or          R7, #0x01
+               /dataSdaLow:
+                                           ; SCL = driven low
+0168 ---- 56bb                             iobclr      #(AUXIO_I2C_SCL & 0x7), [#(IOP_AIODIO0_GPIODOUT + (AUXIO_I2C_SCL >> 3))]
+               /byteLoopEnd:
+
+                                       ; Transmit the ACK bit, which is now in bit 8 of the shift register
+                                       ; Output the bit to SDA
+0169 8601 fc00                         tst         R7, #0x0100
+016b ---- b602                         bz          /ackSdaLow
+016c ---- 75bb /ackSdaHigh:                iobset      #(AUXIO_I2C_SDA & 0x7), [#(IOP_AIODIO0_GPIODOUT + (AUXIO_I2C_SDA >> 3))]
+016d ---- 8e02                         bra         /ackSdaDone
+016e ---- 55bb /ackSdaLow:                 iobclr      #(AUXIO_I2C_SDA & 0x7), [#(IOP_AIODIO0_GPIODOUT + (AUXIO_I2C_SDA >> 3))]
+016f ---- fd47                         nop
+               /ackSdaDone:
+                                       ; Wait T_LOW
+0170 ---- 53f9                         ld          R5, #-((I2C_BASE_DELAY + I2C_EXT_DELAY) - (6))
+0171 ---- 151e                         jsr         I2cWaitDelay
+
+                                       ; SCL = pull-up
+0172 ---- 76bb                         iobset      #(AUXIO_I2C_SCL & 0x7), [#(IOP_AIODIO0_GPIODOUT + (AUXIO_I2C_SCL >> 3))]
+
+                                       ; Wait for SCL stretching to end or time out
+0173 ---- 1521                         jsr         I2cWaitSclStretch
+
+                                       ; Wait T_HIGH
+0174 ---- 53fd                         ld          R5, #-((I2C_BASE_DELAY) - (I2C_WAIT_STRETCH_DELAY + 1))
+0175 ---- 151e                         jsr         I2cWaitDelay
+
+                                       ; SCL = driven low
+0176 ---- 56bb                         iobclr      #(AUXIO_I2C_SCL & 0x7), [#(IOP_AIODIO0_GPIODOUT + (AUXIO_I2C_SCL >> 3))]
+
+                                       ; Mask the ACK bit in the received data
+0177 ---- f0ff                         and         R7, #0xFF
+
+
+               /done:                  ; Done
+0178 ---- adb7                         rts
+               .segment end "Procedure Library"
+
+
+; Generated by DESKTOP-MMLJVDE at 2021-03-04 21:30:12.252

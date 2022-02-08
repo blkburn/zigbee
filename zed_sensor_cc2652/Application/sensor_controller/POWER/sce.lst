@@ -1,0 +1,1630 @@
+               .deffile adi_defs__1.asm
+               .deffile ddi_defs__1.asm
+               .deffile reg_defs__1.asm
+               .deffile sce_defs__1.asm
+
+               ; Number of supported tasks
+               .define TASK_COUNT      1
+
+               ; Sensor Controller clock frequency in active mode
+               .define ACTIVE_MODE_SCE_CLK_FREQ_MHZ    2
+
+               ; Resource-specified definitions, if any
+               ; (None)
+
+
+               .segment begin "Framework"
+
+
+               VectorTable:
+                                       ; SW 0
+0000 ---- 140e                         jsr         PowerUp
+0001 ---- 0417                         jmp         TaskCtrlReqVector
+                                       ; SW 1
+0002 ---- 140e                         jsr         PowerUp
+0003 ---- 0438                         jmp         EventManTrigVector
+                                       ; PROG 0
+0004 ---- 140e                         jsr         PowerUp
+0005 ---- 0442                         jmp         AonRtcCh2Vector
+                                       ; PROG 1
+0006 ---- 140e                         jsr         PowerUp
+0007 ---- 045f                         jmp         Event0Vector
+                                       ; PROG 2
+0008 ---- 140e                         jsr         PowerUp
+0009 ---- 0468                         jmp         Event1Vector
+                                       ; PROG 3
+000a ---- 140e                         jsr         PowerUp
+000b ---- 0471                         jmp         Event2Vector
+                                       ; SW 2
+000c ---- 140e                         jsr         PowerUp
+000d ---- 047a                         jmp         TaskAlertAckVector
+
+
+
+
+               PowerUp:
+                                       ; Make sure that the last operation mode request has taken effect
+000e ---- 8953                         in          R0, [#IOP_SYSIF_OPMODEREQ]
+000f ---- 9954 /waitForOpmodeSync:     in          R1, [#IOP_SYSIF_OPMODEACK]
+0010 ---- 8d29                         cmp         R0, R1
+0011 ---- befd                         bneq        /waitForOpmodeSync
+
+                                       ; Deassert the power-down request
+0012 ---- 4553                         iobclr      #IOB_SYSIF_OPMODE_PD, [#IOP_SYSIF_OPMODEREQ]
+
+                                       ; Wait for it to take effect
+0013 ---- 2554 /waitForOpmodeAck:      iobtst      #IOB_SYSIF_OPMODE_PD, [#IOP_SYSIF_OPMODEACK]
+0014 ---- aefe                         biob1       /waitForOpmodeAck
+
+                                       ; Prevent wake-up events from propagating to the AON domain
+0015 ---- 445c                         iobclr      #0, [#IOP_SYSIF_WUGATE]
+
+               FwEmptyFunc:            ; Done
+0016 ---- adb7                         rts
+
+
+
+
+               TaskCtrlReqVector:
+                                       ; Clear wake-up event
+0017 ---- 745b                         iobset      #IOB_SYSIF_WUFLAGS_SW_WU0, [#IOP_SYSIF_WUFLAGSCLR]
+0018 ---- 545b                         iobclr      #IOB_SYSIF_WUFLAGS_SW_WU0, [#IOP_SYSIF_WUFLAGSCLR]
+
+                                       ; For each task ...
+0019 ---- 7000                         ld          R7, #0
+               /loop:
+                                           ; Save the task ID
+001a ---- 7ca2                             st          R7, [#fwCtrlInt/taskId]
+
+                                           ; Handle initialize request, if any
+001b ---- 68ab                             ld          R6, [#fwCtrlExt/bvTaskInitializeReq]
+001c ---- 009f                             ld          R0, #pFwTaskInitializeFuncTable
+001d ---- 1431                             jsr         /handleReq
+
+                                           ; Handle execute request, if any
+001e ---- 68ac                             ld          R6, [#fwCtrlExt/bvTaskExecuteReq]
+001f ---- 00a0                             ld          R0, #pFwTaskExecuteFuncTable
+0020 ---- 1431                             jsr         /handleReq
+
+                                           ; Handle terminate request, if any
+0021 ---- 68ad                             ld          R6, [#fwCtrlExt/bvTaskTerminateReq]
+0022 ---- 00a1                             ld          R0, #pFwTaskTerminateFuncTable
+0023 ---- 1431                             jsr         /handleReq
+
+                                           ; Move on to the next task
+0024 ---- 78a2                             ld          R7, [#fwCtrlInt/taskId]
+0025 ---- f801                             add         R7, #1
+
+0026 ---- fa01                         cmp         R7, #TASK_COUNT
+0027 ---- bef2                         bneq        /loop
+
+                                       ; Update which tasks are ...
+0028 ---- 78a9                         ld          R7, [#fwCtrlExt/bvActiveTasks]
+                                       ; ... currently active ...
+0029 ---- 68ab                         ld          R6, [#fwCtrlExt/bvTaskInitializeReq]
+002a ---- fd0e                         or          R7, R6
+                                       ; ... and inactive ...
+002b ---- 68ad                         ld          R6, [#fwCtrlExt/bvTaskTerminateReq]
+002c ---- ed92                         inv         R6
+002d ---- fd06                         and         R7, R6
+002e ---- 7ca9                         st          R7, [#fwCtrlExt/bvActiveTasks]
+
+                                       ; We're READY for another request
+002f ---- 6440                         iobset      #IOB_EVCTL_SWEV_READY, [#IOP_EVCTL_SWEVSET]
+
+                                       ; Generate an ALERT interrupt (if requested) and return to sleep
+0030 ---- 047f                         jmp         PowerDownSequence;
+
+               /handleReq:
+                                       ; Restore the task ID, and load the function pointer (here to avoid pipeline hazard)
+0031 ---- 78a2                         ld          R7, [#fwCtrlInt/taskId]
+0032 ---- 8f1f                         ld          R0, [R7+R0]
+
+                                       ; Skip this request?
+0033 ---- ed8f                         lsr         R6, R7
+0034 ---- ec01                         tst         R6, #0x0001
+0035 ---- be01                         bnz         /noSkip
+0036 ---- adb7                             rts
+               /noSkip:
+                                       ; Make the call by jump, with return (rts) in the "called" function
+0037 ---- 8db7                         jmp         R0
+
+
+
+
+               EventManTrigVector:
+                                       ; Clear wake-up event
+0038 ---- 755b                         iobset      #IOB_SYSIF_WUFLAGS_SW_WU1, [#IOP_SYSIF_WUFLAGSCLR]
+0039 ---- 555b                         iobclr      #IOB_SYSIF_WUFLAGS_SW_WU1, [#IOP_SYSIF_WUFLAGSCLR]
+
+                                       ; Reconfigure the programmable wake-up, and trigger it
+003a ---- 78a7                         ld          R7, [#fwCtrlInt/progwucfgManTrigReg]
+003b ---- 60bf                         ld          R6, #(BV_SYSIF_PROGWUCFG_POL | SYSIF_PROGWUCFG_SRC_NO_EVENT)
+003c ---- ef27                         out         R6, [R7]
+003d ---- e240                         or          R6, #BV_SYSIF_PROGWUCFG_EN
+003e ---- ef27                         out         R6, [R7]
+
+                                       ; Indicate completion
+003f ---- 7000                         ld          R7, #0x0000
+0040 ---- 7ca7                         st          R7, [#fwCtrlInt/progwucfgManTrigReg]
+
+                                       ; Generate an ALERT interrupt (if requested) and return to sleep
+0041 ---- 047f                         jmp         PowerDownSequence;
+
+
+
+
+               AonRtcCh2Vector:
+                                       ; Start clearing the RTC event
+0042 ---- 6477                         iobset      #0, [#IOP_SYSIF_RTCEVCLR]
+
+                                       ; For each task (R0 is the current task ID) ...
+0043 ---- 0000                         ld          R0, #0
+               /loop:
+                                           ; ... that is active ...
+0044 ---- 18a9                             ld          R1, [#fwCtrlExt/bvActiveTasks]
+0045 ---- 9d88                             lsr         R1, R0
+0046 ---- 9c01                             tst         R1, #0x0001
+0047 ---- b60e                             bz          /skip
+
+                                               ; Fetch number of RTC intervals until next execution
+0048 ---- 109e                                 ld          R1, #pFwTaskExecuteScheduleTable
+0049 ---- af19                                 ld          R2, [R1+R0]
+
+                                               ; If not already 0, decrement and store. If then 0 ...
+004a ---- aa00                                 cmp         R2, #0
+004b ---- b60a                                 beq         /skip
+004c ---- a8ff                                 add         R2, #-1
+004d ---- af39                                 st          R2, [R1+R0]
+004e ---- be07                                 bnz         /skip
+
+                                                   ; ... execute the task
+004f ---- 0ca2                                     st          R0, [#fwCtrlInt/taskId]
+0050 8600 88a0                                     add         R0, #pFwTaskExecuteFuncTable
+0052 ---- 8f08                                     ld          R0, [R0]
+                                                   ; Insert NOP to avoid pipeline hazard
+0053 ---- fd47                                     nop
+0054 ---- 9db7                                     jsr         R0
+0055 ---- 08a2                                     ld          R0, [#fwCtrlInt/taskId]
+               /skip:
+                                           ; Move on to the next task
+0056 ---- 8801                             add         R0, #1
+
+0057 ---- 8a01                         cmp         R0, #TASK_COUNT
+0058 ---- beeb                         bneq        /loop
+
+                                       ; Wait for the RTC CH2 event clearing to finish
+0059 ---- 254f /waitOnRtcEvClr:        iobtst      #IOB_EVCTL_EVSTAT2L_AON_RTC_CH2, [#IOP_EVCTL_EVSTAT2L]
+005a ---- aefe                         biob1       /waitOnRtcEvClr
+
+                                       ; Clear event edge detector
+005b ---- 645b                         iobset      #IOB_SYSIF_WUFLAGS_PROG_WU0, [#IOP_SYSIF_WUFLAGSCLR]
+005c ---- 445b                         iobclr      #IOB_SYSIF_WUFLAGS_PROG_WU0, [#IOP_SYSIF_WUFLAGSCLR]
+
+                                       ; End clearing the RTC event
+005d ---- 4477                         iobclr      #0, [#IOP_SYSIF_RTCEVCLR]
+
+                                       ; Generate an ALERT interrupt (if requested) and return to sleep
+005e ---- 047f                         jmp         PowerDownSequence;
+
+
+
+
+               Event0Vector:
+                                       ; Disable and clear wake-up event
+005f ---- 5656                         iobclr      #IOB_SYSIF_PROGWUCFG_EN,        [#IOP_SYSIF_PROGWU1CFG] ; Disable source
+0060 ---- 655b                         iobset      #IOB_SYSIF_WUFLAGS_PROG_WU1,    [#IOP_SYSIF_WUFLAGSCLR] ; Clear edge detector
+0061 ---- 455b                         iobclr      #IOB_SYSIF_WUFLAGS_PROG_WU1,    [#IOP_SYSIF_WUFLAGSCLR]
+
+                                       ; Set the task ID and active event index
+0062 ---- 0000                         ld          R0, #0
+0063 ---- 0ca2                         st          R0, [#fwCtrlInt/taskId]
+0064 ---- 0001                         ld          R0, #(1 << 0)
+0065 ---- 0ca3                         st          R0, [#fwCtrlInt/bvActiveEvent]
+
+                                       ; Jump to the event task code
+0066 ---- 1416                         jsr         FwEmptyFunc
+
+                                       ; Generate an ALERT interrupt (if requested) and return to sleep
+0067 ---- 047f                         jmp         PowerDownSequence;
+
+
+
+
+               Event1Vector:
+                                       ; Disable and clear wake-up event
+0068 ---- 5657                         iobclr      #IOB_SYSIF_PROGWUCFG_EN,        [#IOP_SYSIF_PROGWU2CFG] ; Disable source
+0069 ---- 665b                         iobset      #IOB_SYSIF_WUFLAGS_PROG_WU2,    [#IOP_SYSIF_WUFLAGSCLR] ; Clear edge detector
+006a ---- 465b                         iobclr      #IOB_SYSIF_WUFLAGS_PROG_WU2,    [#IOP_SYSIF_WUFLAGSCLR]
+
+                                       ; Set the task ID and active event index
+006b ---- 0000                         ld          R0, #0
+006c ---- 0ca2                         st          R0, [#fwCtrlInt/taskId]
+006d ---- 0002                         ld          R0, #(1 << 1)
+006e ---- 0ca3                         st          R0, [#fwCtrlInt/bvActiveEvent]
+
+                                       ; Jump to the event task code
+006f ---- 1416                         jsr         FwEmptyFunc
+
+                                       ; Generate an ALERT interrupt (if requested) and return to sleep
+0070 ---- 047f                         jmp         PowerDownSequence;
+
+
+
+
+               Event2Vector:
+                                       ; Disable and clear wake-up event
+0071 ---- 5658                         iobclr      #IOB_SYSIF_PROGWUCFG_EN,        [#IOP_SYSIF_PROGWU3CFG] ; Disable source
+0072 ---- 675b                         iobset      #IOB_SYSIF_WUFLAGS_PROG_WU3,    [#IOP_SYSIF_WUFLAGSCLR] ; Clear edge detector
+0073 ---- 475b                         iobclr      #IOB_SYSIF_WUFLAGS_PROG_WU3,    [#IOP_SYSIF_WUFLAGSCLR]
+
+                                       ; Set the task ID and active event index
+0074 ---- 0000                         ld          R0, #0
+0075 ---- 0ca2                         st          R0, [#fwCtrlInt/taskId]
+0076 ---- 0004                         ld          R0, #(1 << 2)
+0077 ---- 0ca3                         st          R0, [#fwCtrlInt/bvActiveEvent]
+
+                                       ; Jump to the event task code
+0078 ---- 1416                         jsr         FwEmptyFunc
+
+                                       ; Generate an ALERT interrupt (if requested) and return to sleep
+0079 ---- 047f                         jmp         PowerDownSequence;
+
+
+
+
+               TaskAlertAckVector:
+                                       ; Clear wake-up event
+007a ---- 765b                         iobset      #IOB_SYSIF_WUFLAGS_SW_WU2, [#IOP_SYSIF_WUFLAGSCLR]
+007b ---- 565b                         iobclr      #IOB_SYSIF_WUFLAGS_SW_WU2, [#IOP_SYSIF_WUFLAGSCLR]
+
+                                       ; Re-enable generation of ALERT interrupts
+007c 86ff 03ff                         ld          R0, #0xFFFF
+007e ---- 0ca5                         st          R0, [#fwCtrlInt/alertGenMask]
+
+                                       ; Generate an ALERT interrupt (if requested) and return to sleep
+                                       ; -> Fall through
+
+
+
+
+               PowerDownSequence:
+                                       ; Let wake-up events propagate to the AON domain
+007f ---- 645c                         iobset      #0, [#IOP_SYSIF_WUGATE]
+
+                                       ; Do we have any ALERT-generating flags pending?
+0080 ---- 78a4                         ld          R7, [#fwCtrlInt/bvTaskIoAlert]
+
+                                       ; Skip if the last I/O ALERT interrupt has not been acknowledged
+0081 ---- 68a5                         ld          R6, [#fwCtrlInt/alertGenMask]
+0082 ---- ed37                         tst         R6, R7
+0083 ---- b605                         bz          /skipAlertGen
+
+                                           ; Transfer I/O flags from internal to external
+0084 ---- 0000                             ld          R0, #0
+0085 ---- 0ca4                             st          R0, [#fwCtrlInt/bvTaskIoAlert]
+0086 ---- 7caa                             st          R7, [#fwCtrlExt/bvTaskIoAlert]
+
+                                           ; Generate the ALERT interrupt, and clear the generation mask
+0087 ---- 6540                             iobset      #IOB_EVCTL_SWEV_ALERT, [#IOP_EVCTL_SWEVSET]
+0088 ---- 0ca5                             st          R0, [#fwCtrlInt/alertGenMask]
+               /skipAlertGen:
+                                       ; Set initial power mode for next executed vector
+                                       ; -> Only at initialization
+
+                                       ; If there are no unacknowledged ALERTs and no vectors pending ...
+0089 ---- 78a5                         ld          R7, [#fwCtrlInt/alertGenMask]
+008a ---- 68a6                         ld          R6, [#fwCtrlInt/alertCanPdAuxMask]
+008b ---- fd0e                         or          R7, R6
+008c ---- f801                         add         R7, #1 ; 0xFFFF -> 0x0000
+008d ---- e95a                         in          R6, [#IOP_SYSIF_WUFLAGS]
+008e ---- fd0e                         or          R7, R6
+008f ---- be01                         bnz         /noPowerDown
+
+                                           ; Assert the power-down request
+0090 ---- 6553                             iobset      #IOB_SYSIF_OPMODE_PD, [#IOP_SYSIF_OPMODEREQ]
+               /noPowerDown:
+                                       ; Sleep until the next event
+0091 ---- bdb7 sleepInstr:             sleep
+
+
+
+
+               PwrRequestAndWaitForActiveMode:
+                                       ; Update Reference DAC clock divider before entering active mode
+0092 ---- 7000                         ld          R7, #((ACTIVE_MODE_SCE_CLK_FREQ_MHZ / 2) - 1)
+0093 ---- fb96                         out         R7, [#IOP_ANAIF_DACSMPLCFG0]
+
+                                       ; Deassert the low-power request
+0094 ---- 4453                         iobclr      #IOB_SYSIF_OPMODE_LP, [#IOP_SYSIF_OPMODEREQ]
+
+                                       ; Wait for it to take effect
+0095 ---- 2454 /waitForOpmodeAck:      iobtst      #IOB_SYSIF_OPMODE_LP, [#IOP_SYSIF_OPMODEACK]
+0096 ---- aefe                         biob1       /waitForOpmodeAck
+
+                                       ; Done
+0097 ---- adb7                         rts
+
+
+
+
+               PwrRequestAndWaitForLowPowerMode:
+                                       ; Assert the low-power request
+0098 ---- 6453                         iobset      #IOB_SYSIF_OPMODE_LP, [#IOP_SYSIF_OPMODEREQ]
+
+                                       ; Wait for it to take effect
+0099 ---- 2454 /waitForOpmodeAck:      iobtst      #IOB_SYSIF_OPMODE_LP, [#IOP_SYSIF_OPMODEACK]
+009a ---- a6fe                         biob0       /waitForOpmodeAck
+
+                                       ; Update Reference DAC clock divider after leaving active mode
+009b ---- 7000                         ld          R7, #(1 - 1)
+009c ---- fb96                         out         R7, [#IOP_ANAIF_DACSMPLCFG0]
+
+                                       ; Done
+009d ---- adb7                         rts
+
+
+
+
+               ; RTC ticks until next execution, one word for each task
+               pFwTaskExecuteScheduleTable:
+009e ---- 0000                         dw          #0
+
+               ; Task code function pointers for each task code block, one word for each task
+               pFwTaskInitializeFuncTable:
+009f ---- 04b4                         dw          #powerSensor/initialize
+               pFwTaskExecuteFuncTable:
+00a0 ---- 04bd                         dw          #powerSensor/execute
+               pFwTaskTerminateFuncTable:
+00a1 ---- 04f8                         dw          #powerSensor/terminate
+
+               ; Run-time logging log requests and masks, one bit for each struct, one word for each task
+               pRtlTaskLogReqTable:
+               ; (Run-time logging is not used in this project)
+               pRtlTaskLogMaskTable:
+               ; (Run-time logging is not used in this project)
+
+
+               ; Internal control data
+               fwCtrlInt:
+00a2 ---- 0000 /taskId:                dw          #0      ; ID of the currently running task
+00a3 ---- 0000 /bvActiveEvent:         dw          #0      ; Bit-vector indicating index of the currently active event trigger
+00a4 ---- 0000 /bvTaskIoAlert:         dw          #0x0000 ; LSB = Normal data exchange, MSB = Overflow or underflow
+00a5 ---- ffff /alertGenMask:          dw          #0xFFFF ; Can generate an ALERT interrupt now? (0xFFFF = yes, 0x0000 = no)
+00a6 ---- 0000 /alertCanPdAuxMask:     dw          #0x0000 ; Can power down AUX domain after ALERT interrupt generation? (0xFFFF = yes, 0x0000 = no)
+00a7 ---- 0000 /progwucfgManTrigReg:   dw          #0x0000 ; Address of PROGWUnCFG register to be triggered manually by EventManTriggerVector
+00a8 ---- 0000 /rtlStructLockReq:      dw          #0x0000 ; Run-time logging struct lock request (0=idle -> 1=requested -> 2=ready -> access -> 0=idle)
+
+               ; External control data, shared with the driver
+               fwCtrlExt:
+00a9 ---- 0000 /bvActiveTasks:         dw          #0x0000 ; Indicates which tasks are currently active
+00aa ---- 0000 /bvTaskIoAlert:         dw          #0x0000 ; LSB = Normal data exchange, MSB = Overflow or underflow
+00ab ---- 0000 /bvTaskInitializeReq:   dw          #0x0000 ; Requests tasks to start
+00ac ---- 0000 /bvTaskExecuteReq:      dw          #0x0000 ; Requests tasks to execute once immediately
+00ad ---- 0000 /bvTaskTerminateReq:    dw          #0x0000 ; Requests tasks to stop
+
+
+               .segment end "Framework"
+
+
+               fwTaskDataStructures:
+               .segment begin "Task: Power Sensor"
+               powerSensor/cfg:
+               powerSensor/cfg/alertThr:
+00ae ---- 0200                         dw          #512
+               powerSensor/input:
+               powerSensor/output:
+               powerSensor/output/pSamples:
+00af ---- 0000                         dw          #0
+00b0 ---- 0000                         dw          #0
+00b1 ---- 0000                         dw          #0
+00b2 ---- 0000                         dw          #0
+00b3 ---- 0000                         dw          #0
+00b4 ---- 0000                         dw          #0
+00b5 ---- 0000                         dw          #0
+00b6 ---- 0000                         dw          #0
+00b7 ---- 0000                         dw          #0
+00b8 ---- 0000                         dw          #0
+00b9 ---- 0000                         dw          #0
+00ba ---- 0000                         dw          #0
+00bb ---- 0000                         dw          #0
+00bc ---- 0000                         dw          #0
+00bd ---- 0000                         dw          #0
+00be ---- 0000                         dw          #0
+00bf ---- 0000                         dw          #0
+00c0 ---- 0000                         dw          #0
+00c1 ---- 0000                         dw          #0
+00c2 ---- 0000                         dw          #0
+00c3 ---- 0000                         dw          #0
+00c4 ---- 0000                         dw          #0
+00c5 ---- 0000                         dw          #0
+00c6 ---- 0000                         dw          #0
+00c7 ---- 0000                         dw          #0
+00c8 ---- 0000                         dw          #0
+00c9 ---- 0000                         dw          #0
+00ca ---- 0000                         dw          #0
+00cb ---- 0000                         dw          #0
+00cc ---- 0000                         dw          #0
+00cd ---- 0000                         dw          #0
+00ce ---- 0000                         dw          #0
+00cf ---- 0000                         dw          #0
+00d0 ---- 0000                         dw          #0
+00d1 ---- 0000                         dw          #0
+00d2 ---- 0000                         dw          #0
+00d3 ---- 0000                         dw          #0
+00d4 ---- 0000                         dw          #0
+00d5 ---- 0000                         dw          #0
+00d6 ---- 0000                         dw          #0
+00d7 ---- 0000                         dw          #0
+00d8 ---- 0000                         dw          #0
+00d9 ---- 0000                         dw          #0
+00da ---- 0000                         dw          #0
+00db ---- 0000                         dw          #0
+00dc ---- 0000                         dw          #0
+00dd ---- 0000                         dw          #0
+00de ---- 0000                         dw          #0
+00df ---- 0000                         dw          #0
+00e0 ---- 0000                         dw          #0
+00e1 ---- 0000                         dw          #0
+00e2 ---- 0000                         dw          #0
+00e3 ---- 0000                         dw          #0
+00e4 ---- 0000                         dw          #0
+00e5 ---- 0000                         dw          #0
+00e6 ---- 0000                         dw          #0
+00e7 ---- 0000                         dw          #0
+00e8 ---- 0000                         dw          #0
+00e9 ---- 0000                         dw          #0
+00ea ---- 0000                         dw          #0
+00eb ---- 0000                         dw          #0
+00ec ---- 0000                         dw          #0
+00ed ---- 0000                         dw          #0
+00ee ---- 0000                         dw          #0
+00ef ---- 0000                         dw          #0
+00f0 ---- 0000                         dw          #0
+00f1 ---- 0000                         dw          #0
+00f2 ---- 0000                         dw          #0
+00f3 ---- 0000                         dw          #0
+00f4 ---- 0000                         dw          #0
+00f5 ---- 0000                         dw          #0
+00f6 ---- 0000                         dw          #0
+00f7 ---- 0000                         dw          #0
+00f8 ---- 0000                         dw          #0
+00f9 ---- 0000                         dw          #0
+00fa ---- 0000                         dw          #0
+00fb ---- 0000                         dw          #0
+00fc ---- 0000                         dw          #0
+00fd ---- 0000                         dw          #0
+00fe ---- 0000                         dw          #0
+00ff ---- 0000                         dw          #0
+0100 ---- 0000                         dw          #0
+0101 ---- 0000                         dw          #0
+0102 ---- 0000                         dw          #0
+0103 ---- 0000                         dw          #0
+0104 ---- 0000                         dw          #0
+0105 ---- 0000                         dw          #0
+0106 ---- 0000                         dw          #0
+0107 ---- 0000                         dw          #0
+0108 ---- 0000                         dw          #0
+0109 ---- 0000                         dw          #0
+010a ---- 0000                         dw          #0
+010b ---- 0000                         dw          #0
+010c ---- 0000                         dw          #0
+010d ---- 0000                         dw          #0
+010e ---- 0000                         dw          #0
+010f ---- 0000                         dw          #0
+0110 ---- 0000                         dw          #0
+0111 ---- 0000                         dw          #0
+0112 ---- 0000                         dw          #0
+0113 ---- 0000                         dw          #0
+0114 ---- 0000                         dw          #0
+0115 ---- 0000                         dw          #0
+0116 ---- 0000                         dw          #0
+0117 ---- 0000                         dw          #0
+0118 ---- 0000                         dw          #0
+0119 ---- 0000                         dw          #0
+011a ---- 0000                         dw          #0
+011b ---- 0000                         dw          #0
+011c ---- 0000                         dw          #0
+011d ---- 0000                         dw          #0
+011e ---- 0000                         dw          #0
+011f ---- 0000                         dw          #0
+0120 ---- 0000                         dw          #0
+0121 ---- 0000                         dw          #0
+0122 ---- 0000                         dw          #0
+0123 ---- 0000                         dw          #0
+0124 ---- 0000                         dw          #0
+0125 ---- 0000                         dw          #0
+0126 ---- 0000                         dw          #0
+0127 ---- 0000                         dw          #0
+0128 ---- 0000                         dw          #0
+0129 ---- 0000                         dw          #0
+012a ---- 0000                         dw          #0
+012b ---- 0000                         dw          #0
+012c ---- 0000                         dw          #0
+012d ---- 0000                         dw          #0
+012e ---- 0000                         dw          #0
+012f ---- 0000                         dw          #0
+0130 ---- 0000                         dw          #0
+0131 ---- 0000                         dw          #0
+0132 ---- 0000                         dw          #0
+0133 ---- 0000                         dw          #0
+0134 ---- 0000                         dw          #0
+0135 ---- 0000                         dw          #0
+0136 ---- 0000                         dw          #0
+0137 ---- 0000                         dw          #0
+0138 ---- 0000                         dw          #0
+0139 ---- 0000                         dw          #0
+013a ---- 0000                         dw          #0
+013b ---- 0000                         dw          #0
+013c ---- 0000                         dw          #0
+013d ---- 0000                         dw          #0
+013e ---- 0000                         dw          #0
+013f ---- 0000                         dw          #0
+0140 ---- 0000                         dw          #0
+0141 ---- 0000                         dw          #0
+0142 ---- 0000                         dw          #0
+0143 ---- 0000                         dw          #0
+0144 ---- 0000                         dw          #0
+0145 ---- 0000                         dw          #0
+0146 ---- 0000                         dw          #0
+0147 ---- 0000                         dw          #0
+0148 ---- 0000                         dw          #0
+0149 ---- 0000                         dw          #0
+014a ---- 0000                         dw          #0
+014b ---- 0000                         dw          #0
+014c ---- 0000                         dw          #0
+014d ---- 0000                         dw          #0
+014e ---- 0000                         dw          #0
+014f ---- 0000                         dw          #0
+0150 ---- 0000                         dw          #0
+0151 ---- 0000                         dw          #0
+0152 ---- 0000                         dw          #0
+0153 ---- 0000                         dw          #0
+0154 ---- 0000                         dw          #0
+0155 ---- 0000                         dw          #0
+0156 ---- 0000                         dw          #0
+0157 ---- 0000                         dw          #0
+0158 ---- 0000                         dw          #0
+0159 ---- 0000                         dw          #0
+015a ---- 0000                         dw          #0
+015b ---- 0000                         dw          #0
+015c ---- 0000                         dw          #0
+015d ---- 0000                         dw          #0
+015e ---- 0000                         dw          #0
+015f ---- 0000                         dw          #0
+0160 ---- 0000                         dw          #0
+0161 ---- 0000                         dw          #0
+0162 ---- 0000                         dw          #0
+0163 ---- 0000                         dw          #0
+0164 ---- 0000                         dw          #0
+0165 ---- 0000                         dw          #0
+0166 ---- 0000                         dw          #0
+0167 ---- 0000                         dw          #0
+0168 ---- 0000                         dw          #0
+0169 ---- 0000                         dw          #0
+016a ---- 0000                         dw          #0
+016b ---- 0000                         dw          #0
+016c ---- 0000                         dw          #0
+016d ---- 0000                         dw          #0
+016e ---- 0000                         dw          #0
+016f ---- 0000                         dw          #0
+0170 ---- 0000                         dw          #0
+0171 ---- 0000                         dw          #0
+0172 ---- 0000                         dw          #0
+0173 ---- 0000                         dw          #0
+0174 ---- 0000                         dw          #0
+0175 ---- 0000                         dw          #0
+0176 ---- 0000                         dw          #0
+0177 ---- 0000                         dw          #0
+0178 ---- 0000                         dw          #0
+0179 ---- 0000                         dw          #0
+017a ---- 0000                         dw          #0
+017b ---- 0000                         dw          #0
+017c ---- 0000                         dw          #0
+017d ---- 0000                         dw          #0
+017e ---- 0000                         dw          #0
+017f ---- 0000                         dw          #0
+0180 ---- 0000                         dw          #0
+0181 ---- 0000                         dw          #0
+0182 ---- 0000                         dw          #0
+0183 ---- 0000                         dw          #0
+0184 ---- 0000                         dw          #0
+0185 ---- 0000                         dw          #0
+0186 ---- 0000                         dw          #0
+0187 ---- 0000                         dw          #0
+0188 ---- 0000                         dw          #0
+0189 ---- 0000                         dw          #0
+018a ---- 0000                         dw          #0
+018b ---- 0000                         dw          #0
+018c ---- 0000                         dw          #0
+018d ---- 0000                         dw          #0
+018e ---- 0000                         dw          #0
+018f ---- 0000                         dw          #0
+0190 ---- 0000                         dw          #0
+0191 ---- 0000                         dw          #0
+0192 ---- 0000                         dw          #0
+0193 ---- 0000                         dw          #0
+0194 ---- 0000                         dw          #0
+0195 ---- 0000                         dw          #0
+0196 ---- 0000                         dw          #0
+0197 ---- 0000                         dw          #0
+0198 ---- 0000                         dw          #0
+0199 ---- 0000                         dw          #0
+019a ---- 0000                         dw          #0
+019b ---- 0000                         dw          #0
+019c ---- 0000                         dw          #0
+019d ---- 0000                         dw          #0
+019e ---- 0000                         dw          #0
+019f ---- 0000                         dw          #0
+01a0 ---- 0000                         dw          #0
+01a1 ---- 0000                         dw          #0
+01a2 ---- 0000                         dw          #0
+01a3 ---- 0000                         dw          #0
+01a4 ---- 0000                         dw          #0
+01a5 ---- 0000                         dw          #0
+01a6 ---- 0000                         dw          #0
+01a7 ---- 0000                         dw          #0
+01a8 ---- 0000                         dw          #0
+01a9 ---- 0000                         dw          #0
+01aa ---- 0000                         dw          #0
+01ab ---- 0000                         dw          #0
+01ac ---- 0000                         dw          #0
+01ad ---- 0000                         dw          #0
+01ae ---- 0000                         dw          #0
+01af ---- 0000                         dw          #0
+01b0 ---- 0000                         dw          #0
+01b1 ---- 0000                         dw          #0
+01b2 ---- 0000                         dw          #0
+01b3 ---- 0000                         dw          #0
+01b4 ---- 0000                         dw          #0
+01b5 ---- 0000                         dw          #0
+01b6 ---- 0000                         dw          #0
+01b7 ---- 0000                         dw          #0
+01b8 ---- 0000                         dw          #0
+01b9 ---- 0000                         dw          #0
+01ba ---- 0000                         dw          #0
+01bb ---- 0000                         dw          #0
+01bc ---- 0000                         dw          #0
+01bd ---- 0000                         dw          #0
+01be ---- 0000                         dw          #0
+01bf ---- 0000                         dw          #0
+01c0 ---- 0000                         dw          #0
+01c1 ---- 0000                         dw          #0
+01c2 ---- 0000                         dw          #0
+01c3 ---- 0000                         dw          #0
+01c4 ---- 0000                         dw          #0
+01c5 ---- 0000                         dw          #0
+01c6 ---- 0000                         dw          #0
+01c7 ---- 0000                         dw          #0
+01c8 ---- 0000                         dw          #0
+01c9 ---- 0000                         dw          #0
+01ca ---- 0000                         dw          #0
+01cb ---- 0000                         dw          #0
+01cc ---- 0000                         dw          #0
+01cd ---- 0000                         dw          #0
+01ce ---- 0000                         dw          #0
+01cf ---- 0000                         dw          #0
+01d0 ---- 0000                         dw          #0
+01d1 ---- 0000                         dw          #0
+01d2 ---- 0000                         dw          #0
+01d3 ---- 0000                         dw          #0
+01d4 ---- 0000                         dw          #0
+01d5 ---- 0000                         dw          #0
+01d6 ---- 0000                         dw          #0
+01d7 ---- 0000                         dw          #0
+01d8 ---- 0000                         dw          #0
+01d9 ---- 0000                         dw          #0
+01da ---- 0000                         dw          #0
+01db ---- 0000                         dw          #0
+01dc ---- 0000                         dw          #0
+01dd ---- 0000                         dw          #0
+01de ---- 0000                         dw          #0
+01df ---- 0000                         dw          #0
+01e0 ---- 0000                         dw          #0
+01e1 ---- 0000                         dw          #0
+01e2 ---- 0000                         dw          #0
+01e3 ---- 0000                         dw          #0
+01e4 ---- 0000                         dw          #0
+01e5 ---- 0000                         dw          #0
+01e6 ---- 0000                         dw          #0
+01e7 ---- 0000                         dw          #0
+01e8 ---- 0000                         dw          #0
+01e9 ---- 0000                         dw          #0
+01ea ---- 0000                         dw          #0
+01eb ---- 0000                         dw          #0
+01ec ---- 0000                         dw          #0
+01ed ---- 0000                         dw          #0
+01ee ---- 0000                         dw          #0
+01ef ---- 0000                         dw          #0
+01f0 ---- 0000                         dw          #0
+01f1 ---- 0000                         dw          #0
+01f2 ---- 0000                         dw          #0
+01f3 ---- 0000                         dw          #0
+01f4 ---- 0000                         dw          #0
+01f5 ---- 0000                         dw          #0
+01f6 ---- 0000                         dw          #0
+01f7 ---- 0000                         dw          #0
+01f8 ---- 0000                         dw          #0
+01f9 ---- 0000                         dw          #0
+01fa ---- 0000                         dw          #0
+01fb ---- 0000                         dw          #0
+01fc ---- 0000                         dw          #0
+01fd ---- 0000                         dw          #0
+01fe ---- 0000                         dw          #0
+01ff ---- 0000                         dw          #0
+0200 ---- 0000                         dw          #0
+0201 ---- 0000                         dw          #0
+0202 ---- 0000                         dw          #0
+0203 ---- 0000                         dw          #0
+0204 ---- 0000                         dw          #0
+0205 ---- 0000                         dw          #0
+0206 ---- 0000                         dw          #0
+0207 ---- 0000                         dw          #0
+0208 ---- 0000                         dw          #0
+0209 ---- 0000                         dw          #0
+020a ---- 0000                         dw          #0
+020b ---- 0000                         dw          #0
+020c ---- 0000                         dw          #0
+020d ---- 0000                         dw          #0
+020e ---- 0000                         dw          #0
+020f ---- 0000                         dw          #0
+0210 ---- 0000                         dw          #0
+0211 ---- 0000                         dw          #0
+0212 ---- 0000                         dw          #0
+0213 ---- 0000                         dw          #0
+0214 ---- 0000                         dw          #0
+0215 ---- 0000                         dw          #0
+0216 ---- 0000                         dw          #0
+0217 ---- 0000                         dw          #0
+0218 ---- 0000                         dw          #0
+0219 ---- 0000                         dw          #0
+021a ---- 0000                         dw          #0
+021b ---- 0000                         dw          #0
+021c ---- 0000                         dw          #0
+021d ---- 0000                         dw          #0
+021e ---- 0000                         dw          #0
+021f ---- 0000                         dw          #0
+0220 ---- 0000                         dw          #0
+0221 ---- 0000                         dw          #0
+0222 ---- 0000                         dw          #0
+0223 ---- 0000                         dw          #0
+0224 ---- 0000                         dw          #0
+0225 ---- 0000                         dw          #0
+0226 ---- 0000                         dw          #0
+0227 ---- 0000                         dw          #0
+0228 ---- 0000                         dw          #0
+0229 ---- 0000                         dw          #0
+022a ---- 0000                         dw          #0
+022b ---- 0000                         dw          #0
+022c ---- 0000                         dw          #0
+022d ---- 0000                         dw          #0
+022e ---- 0000                         dw          #0
+022f ---- 0000                         dw          #0
+0230 ---- 0000                         dw          #0
+0231 ---- 0000                         dw          #0
+0232 ---- 0000                         dw          #0
+0233 ---- 0000                         dw          #0
+0234 ---- 0000                         dw          #0
+0235 ---- 0000                         dw          #0
+0236 ---- 0000                         dw          #0
+0237 ---- 0000                         dw          #0
+0238 ---- 0000                         dw          #0
+0239 ---- 0000                         dw          #0
+023a ---- 0000                         dw          #0
+023b ---- 0000                         dw          #0
+023c ---- 0000                         dw          #0
+023d ---- 0000                         dw          #0
+023e ---- 0000                         dw          #0
+023f ---- 0000                         dw          #0
+0240 ---- 0000                         dw          #0
+0241 ---- 0000                         dw          #0
+0242 ---- 0000                         dw          #0
+0243 ---- 0000                         dw          #0
+0244 ---- 0000                         dw          #0
+0245 ---- 0000                         dw          #0
+0246 ---- 0000                         dw          #0
+0247 ---- 0000                         dw          #0
+0248 ---- 0000                         dw          #0
+0249 ---- 0000                         dw          #0
+024a ---- 0000                         dw          #0
+024b ---- 0000                         dw          #0
+024c ---- 0000                         dw          #0
+024d ---- 0000                         dw          #0
+024e ---- 0000                         dw          #0
+024f ---- 0000                         dw          #0
+0250 ---- 0000                         dw          #0
+0251 ---- 0000                         dw          #0
+0252 ---- 0000                         dw          #0
+0253 ---- 0000                         dw          #0
+0254 ---- 0000                         dw          #0
+0255 ---- 0000                         dw          #0
+0256 ---- 0000                         dw          #0
+0257 ---- 0000                         dw          #0
+0258 ---- 0000                         dw          #0
+0259 ---- 0000                         dw          #0
+025a ---- 0000                         dw          #0
+025b ---- 0000                         dw          #0
+025c ---- 0000                         dw          #0
+025d ---- 0000                         dw          #0
+025e ---- 0000                         dw          #0
+025f ---- 0000                         dw          #0
+0260 ---- 0000                         dw          #0
+0261 ---- 0000                         dw          #0
+0262 ---- 0000                         dw          #0
+0263 ---- 0000                         dw          #0
+0264 ---- 0000                         dw          #0
+0265 ---- 0000                         dw          #0
+0266 ---- 0000                         dw          #0
+0267 ---- 0000                         dw          #0
+0268 ---- 0000                         dw          #0
+0269 ---- 0000                         dw          #0
+026a ---- 0000                         dw          #0
+026b ---- 0000                         dw          #0
+026c ---- 0000                         dw          #0
+026d ---- 0000                         dw          #0
+026e ---- 0000                         dw          #0
+026f ---- 0000                         dw          #0
+0270 ---- 0000                         dw          #0
+0271 ---- 0000                         dw          #0
+0272 ---- 0000                         dw          #0
+0273 ---- 0000                         dw          #0
+0274 ---- 0000                         dw          #0
+0275 ---- 0000                         dw          #0
+0276 ---- 0000                         dw          #0
+0277 ---- 0000                         dw          #0
+0278 ---- 0000                         dw          #0
+0279 ---- 0000                         dw          #0
+027a ---- 0000                         dw          #0
+027b ---- 0000                         dw          #0
+027c ---- 0000                         dw          #0
+027d ---- 0000                         dw          #0
+027e ---- 0000                         dw          #0
+027f ---- 0000                         dw          #0
+0280 ---- 0000                         dw          #0
+0281 ---- 0000                         dw          #0
+0282 ---- 0000                         dw          #0
+0283 ---- 0000                         dw          #0
+0284 ---- 0000                         dw          #0
+0285 ---- 0000                         dw          #0
+0286 ---- 0000                         dw          #0
+0287 ---- 0000                         dw          #0
+0288 ---- 0000                         dw          #0
+0289 ---- 0000                         dw          #0
+028a ---- 0000                         dw          #0
+028b ---- 0000                         dw          #0
+028c ---- 0000                         dw          #0
+028d ---- 0000                         dw          #0
+028e ---- 0000                         dw          #0
+028f ---- 0000                         dw          #0
+0290 ---- 0000                         dw          #0
+0291 ---- 0000                         dw          #0
+0292 ---- 0000                         dw          #0
+0293 ---- 0000                         dw          #0
+0294 ---- 0000                         dw          #0
+0295 ---- 0000                         dw          #0
+0296 ---- 0000                         dw          #0
+0297 ---- 0000                         dw          #0
+0298 ---- 0000                         dw          #0
+0299 ---- 0000                         dw          #0
+029a ---- 0000                         dw          #0
+029b ---- 0000                         dw          #0
+029c ---- 0000                         dw          #0
+029d ---- 0000                         dw          #0
+029e ---- 0000                         dw          #0
+029f ---- 0000                         dw          #0
+02a0 ---- 0000                         dw          #0
+02a1 ---- 0000                         dw          #0
+02a2 ---- 0000                         dw          #0
+02a3 ---- 0000                         dw          #0
+02a4 ---- 0000                         dw          #0
+02a5 ---- 0000                         dw          #0
+02a6 ---- 0000                         dw          #0
+02a7 ---- 0000                         dw          #0
+02a8 ---- 0000                         dw          #0
+02a9 ---- 0000                         dw          #0
+02aa ---- 0000                         dw          #0
+02ab ---- 0000                         dw          #0
+02ac ---- 0000                         dw          #0
+02ad ---- 0000                         dw          #0
+02ae ---- 0000                         dw          #0
+02af ---- 0000                         dw          #0
+02b0 ---- 0000                         dw          #0
+02b1 ---- 0000                         dw          #0
+02b2 ---- 0000                         dw          #0
+02b3 ---- 0000                         dw          #0
+02b4 ---- 0000                         dw          #0
+02b5 ---- 0000                         dw          #0
+02b6 ---- 0000                         dw          #0
+02b7 ---- 0000                         dw          #0
+02b8 ---- 0000                         dw          #0
+02b9 ---- 0000                         dw          #0
+02ba ---- 0000                         dw          #0
+02bb ---- 0000                         dw          #0
+02bc ---- 0000                         dw          #0
+02bd ---- 0000                         dw          #0
+02be ---- 0000                         dw          #0
+02bf ---- 0000                         dw          #0
+02c0 ---- 0000                         dw          #0
+02c1 ---- 0000                         dw          #0
+02c2 ---- 0000                         dw          #0
+02c3 ---- 0000                         dw          #0
+02c4 ---- 0000                         dw          #0
+02c5 ---- 0000                         dw          #0
+02c6 ---- 0000                         dw          #0
+02c7 ---- 0000                         dw          #0
+02c8 ---- 0000                         dw          #0
+02c9 ---- 0000                         dw          #0
+02ca ---- 0000                         dw          #0
+02cb ---- 0000                         dw          #0
+02cc ---- 0000                         dw          #0
+02cd ---- 0000                         dw          #0
+02ce ---- 0000                         dw          #0
+02cf ---- 0000                         dw          #0
+02d0 ---- 0000                         dw          #0
+02d1 ---- 0000                         dw          #0
+02d2 ---- 0000                         dw          #0
+02d3 ---- 0000                         dw          #0
+02d4 ---- 0000                         dw          #0
+02d5 ---- 0000                         dw          #0
+02d6 ---- 0000                         dw          #0
+02d7 ---- 0000                         dw          #0
+02d8 ---- 0000                         dw          #0
+02d9 ---- 0000                         dw          #0
+02da ---- 0000                         dw          #0
+02db ---- 0000                         dw          #0
+02dc ---- 0000                         dw          #0
+02dd ---- 0000                         dw          #0
+02de ---- 0000                         dw          #0
+02df ---- 0000                         dw          #0
+02e0 ---- 0000                         dw          #0
+02e1 ---- 0000                         dw          #0
+02e2 ---- 0000                         dw          #0
+02e3 ---- 0000                         dw          #0
+02e4 ---- 0000                         dw          #0
+02e5 ---- 0000                         dw          #0
+02e6 ---- 0000                         dw          #0
+02e7 ---- 0000                         dw          #0
+02e8 ---- 0000                         dw          #0
+02e9 ---- 0000                         dw          #0
+02ea ---- 0000                         dw          #0
+02eb ---- 0000                         dw          #0
+02ec ---- 0000                         dw          #0
+02ed ---- 0000                         dw          #0
+02ee ---- 0000                         dw          #0
+02ef ---- 0000                         dw          #0
+02f0 ---- 0000                         dw          #0
+02f1 ---- 0000                         dw          #0
+02f2 ---- 0000                         dw          #0
+02f3 ---- 0000                         dw          #0
+02f4 ---- 0000                         dw          #0
+02f5 ---- 0000                         dw          #0
+02f6 ---- 0000                         dw          #0
+02f7 ---- 0000                         dw          #0
+02f8 ---- 0000                         dw          #0
+02f9 ---- 0000                         dw          #0
+02fa ---- 0000                         dw          #0
+02fb ---- 0000                         dw          #0
+02fc ---- 0000                         dw          #0
+02fd ---- 0000                         dw          #0
+02fe ---- 0000                         dw          #0
+02ff ---- 0000                         dw          #0
+0300 ---- 0000                         dw          #0
+0301 ---- 0000                         dw          #0
+0302 ---- 0000                         dw          #0
+0303 ---- 0000                         dw          #0
+0304 ---- 0000                         dw          #0
+0305 ---- 0000                         dw          #0
+0306 ---- 0000                         dw          #0
+0307 ---- 0000                         dw          #0
+0308 ---- 0000                         dw          #0
+0309 ---- 0000                         dw          #0
+030a ---- 0000                         dw          #0
+030b ---- 0000                         dw          #0
+030c ---- 0000                         dw          #0
+030d ---- 0000                         dw          #0
+030e ---- 0000                         dw          #0
+030f ---- 0000                         dw          #0
+0310 ---- 0000                         dw          #0
+0311 ---- 0000                         dw          #0
+0312 ---- 0000                         dw          #0
+0313 ---- 0000                         dw          #0
+0314 ---- 0000                         dw          #0
+0315 ---- 0000                         dw          #0
+0316 ---- 0000                         dw          #0
+0317 ---- 0000                         dw          #0
+0318 ---- 0000                         dw          #0
+0319 ---- 0000                         dw          #0
+031a ---- 0000                         dw          #0
+031b ---- 0000                         dw          #0
+031c ---- 0000                         dw          #0
+031d ---- 0000                         dw          #0
+031e ---- 0000                         dw          #0
+031f ---- 0000                         dw          #0
+0320 ---- 0000                         dw          #0
+0321 ---- 0000                         dw          #0
+0322 ---- 0000                         dw          #0
+0323 ---- 0000                         dw          #0
+0324 ---- 0000                         dw          #0
+0325 ---- 0000                         dw          #0
+0326 ---- 0000                         dw          #0
+0327 ---- 0000                         dw          #0
+0328 ---- 0000                         dw          #0
+0329 ---- 0000                         dw          #0
+032a ---- 0000                         dw          #0
+032b ---- 0000                         dw          #0
+032c ---- 0000                         dw          #0
+032d ---- 0000                         dw          #0
+032e ---- 0000                         dw          #0
+032f ---- 0000                         dw          #0
+0330 ---- 0000                         dw          #0
+0331 ---- 0000                         dw          #0
+0332 ---- 0000                         dw          #0
+0333 ---- 0000                         dw          #0
+0334 ---- 0000                         dw          #0
+0335 ---- 0000                         dw          #0
+0336 ---- 0000                         dw          #0
+0337 ---- 0000                         dw          #0
+0338 ---- 0000                         dw          #0
+0339 ---- 0000                         dw          #0
+033a ---- 0000                         dw          #0
+033b ---- 0000                         dw          #0
+033c ---- 0000                         dw          #0
+033d ---- 0000                         dw          #0
+033e ---- 0000                         dw          #0
+033f ---- 0000                         dw          #0
+0340 ---- 0000                         dw          #0
+0341 ---- 0000                         dw          #0
+0342 ---- 0000                         dw          #0
+0343 ---- 0000                         dw          #0
+0344 ---- 0000                         dw          #0
+0345 ---- 0000                         dw          #0
+0346 ---- 0000                         dw          #0
+0347 ---- 0000                         dw          #0
+0348 ---- 0000                         dw          #0
+0349 ---- 0000                         dw          #0
+034a ---- 0000                         dw          #0
+034b ---- 0000                         dw          #0
+034c ---- 0000                         dw          #0
+034d ---- 0000                         dw          #0
+034e ---- 0000                         dw          #0
+034f ---- 0000                         dw          #0
+0350 ---- 0000                         dw          #0
+0351 ---- 0000                         dw          #0
+0352 ---- 0000                         dw          #0
+0353 ---- 0000                         dw          #0
+0354 ---- 0000                         dw          #0
+0355 ---- 0000                         dw          #0
+0356 ---- 0000                         dw          #0
+0357 ---- 0000                         dw          #0
+0358 ---- 0000                         dw          #0
+0359 ---- 0000                         dw          #0
+035a ---- 0000                         dw          #0
+035b ---- 0000                         dw          #0
+035c ---- 0000                         dw          #0
+035d ---- 0000                         dw          #0
+035e ---- 0000                         dw          #0
+035f ---- 0000                         dw          #0
+0360 ---- 0000                         dw          #0
+0361 ---- 0000                         dw          #0
+0362 ---- 0000                         dw          #0
+0363 ---- 0000                         dw          #0
+0364 ---- 0000                         dw          #0
+0365 ---- 0000                         dw          #0
+0366 ---- 0000                         dw          #0
+0367 ---- 0000                         dw          #0
+0368 ---- 0000                         dw          #0
+0369 ---- 0000                         dw          #0
+036a ---- 0000                         dw          #0
+036b ---- 0000                         dw          #0
+036c ---- 0000                         dw          #0
+036d ---- 0000                         dw          #0
+036e ---- 0000                         dw          #0
+036f ---- 0000                         dw          #0
+0370 ---- 0000                         dw          #0
+0371 ---- 0000                         dw          #0
+0372 ---- 0000                         dw          #0
+0373 ---- 0000                         dw          #0
+0374 ---- 0000                         dw          #0
+0375 ---- 0000                         dw          #0
+0376 ---- 0000                         dw          #0
+0377 ---- 0000                         dw          #0
+0378 ---- 0000                         dw          #0
+0379 ---- 0000                         dw          #0
+037a ---- 0000                         dw          #0
+037b ---- 0000                         dw          #0
+037c ---- 0000                         dw          #0
+037d ---- 0000                         dw          #0
+037e ---- 0000                         dw          #0
+037f ---- 0000                         dw          #0
+0380 ---- 0000                         dw          #0
+0381 ---- 0000                         dw          #0
+0382 ---- 0000                         dw          #0
+0383 ---- 0000                         dw          #0
+0384 ---- 0000                         dw          #0
+0385 ---- 0000                         dw          #0
+0386 ---- 0000                         dw          #0
+0387 ---- 0000                         dw          #0
+0388 ---- 0000                         dw          #0
+0389 ---- 0000                         dw          #0
+038a ---- 0000                         dw          #0
+038b ---- 0000                         dw          #0
+038c ---- 0000                         dw          #0
+038d ---- 0000                         dw          #0
+038e ---- 0000                         dw          #0
+038f ---- 0000                         dw          #0
+0390 ---- 0000                         dw          #0
+0391 ---- 0000                         dw          #0
+0392 ---- 0000                         dw          #0
+0393 ---- 0000                         dw          #0
+0394 ---- 0000                         dw          #0
+0395 ---- 0000                         dw          #0
+0396 ---- 0000                         dw          #0
+0397 ---- 0000                         dw          #0
+0398 ---- 0000                         dw          #0
+0399 ---- 0000                         dw          #0
+039a ---- 0000                         dw          #0
+039b ---- 0000                         dw          #0
+039c ---- 0000                         dw          #0
+039d ---- 0000                         dw          #0
+039e ---- 0000                         dw          #0
+039f ---- 0000                         dw          #0
+03a0 ---- 0000                         dw          #0
+03a1 ---- 0000                         dw          #0
+03a2 ---- 0000                         dw          #0
+03a3 ---- 0000                         dw          #0
+03a4 ---- 0000                         dw          #0
+03a5 ---- 0000                         dw          #0
+03a6 ---- 0000                         dw          #0
+03a7 ---- 0000                         dw          #0
+03a8 ---- 0000                         dw          #0
+03a9 ---- 0000                         dw          #0
+03aa ---- 0000                         dw          #0
+03ab ---- 0000                         dw          #0
+03ac ---- 0000                         dw          #0
+03ad ---- 0000                         dw          #0
+03ae ---- 0000                         dw          #0
+03af ---- 0000                         dw          #0
+03b0 ---- 0000                         dw          #0
+03b1 ---- 0000                         dw          #0
+03b2 ---- 0000                         dw          #0
+03b3 ---- 0000                         dw          #0
+03b4 ---- 0000                         dw          #0
+03b5 ---- 0000                         dw          #0
+03b6 ---- 0000                         dw          #0
+03b7 ---- 0000                         dw          #0
+03b8 ---- 0000                         dw          #0
+03b9 ---- 0000                         dw          #0
+03ba ---- 0000                         dw          #0
+03bb ---- 0000                         dw          #0
+03bc ---- 0000                         dw          #0
+03bd ---- 0000                         dw          #0
+03be ---- 0000                         dw          #0
+03bf ---- 0000                         dw          #0
+03c0 ---- 0000                         dw          #0
+03c1 ---- 0000                         dw          #0
+03c2 ---- 0000                         dw          #0
+03c3 ---- 0000                         dw          #0
+03c4 ---- 0000                         dw          #0
+03c5 ---- 0000                         dw          #0
+03c6 ---- 0000                         dw          #0
+03c7 ---- 0000                         dw          #0
+03c8 ---- 0000                         dw          #0
+03c9 ---- 0000                         dw          #0
+03ca ---- 0000                         dw          #0
+03cb ---- 0000                         dw          #0
+03cc ---- 0000                         dw          #0
+03cd ---- 0000                         dw          #0
+03ce ---- 0000                         dw          #0
+03cf ---- 0000                         dw          #0
+03d0 ---- 0000                         dw          #0
+03d1 ---- 0000                         dw          #0
+03d2 ---- 0000                         dw          #0
+03d3 ---- 0000                         dw          #0
+03d4 ---- 0000                         dw          #0
+03d5 ---- 0000                         dw          #0
+03d6 ---- 0000                         dw          #0
+03d7 ---- 0000                         dw          #0
+03d8 ---- 0000                         dw          #0
+03d9 ---- 0000                         dw          #0
+03da ---- 0000                         dw          #0
+03db ---- 0000                         dw          #0
+03dc ---- 0000                         dw          #0
+03dd ---- 0000                         dw          #0
+03de ---- 0000                         dw          #0
+03df ---- 0000                         dw          #0
+03e0 ---- 0000                         dw          #0
+03e1 ---- 0000                         dw          #0
+03e2 ---- 0000                         dw          #0
+03e3 ---- 0000                         dw          #0
+03e4 ---- 0000                         dw          #0
+03e5 ---- 0000                         dw          #0
+03e6 ---- 0000                         dw          #0
+03e7 ---- 0000                         dw          #0
+03e8 ---- 0000                         dw          #0
+03e9 ---- 0000                         dw          #0
+03ea ---- 0000                         dw          #0
+03eb ---- 0000                         dw          #0
+03ec ---- 0000                         dw          #0
+03ed ---- 0000                         dw          #0
+03ee ---- 0000                         dw          #0
+03ef ---- 0000                         dw          #0
+03f0 ---- 0000                         dw          #0
+03f1 ---- 0000                         dw          #0
+03f2 ---- 0000                         dw          #0
+03f3 ---- 0000                         dw          #0
+03f4 ---- 0000                         dw          #0
+03f5 ---- 0000                         dw          #0
+03f6 ---- 0000                         dw          #0
+03f7 ---- 0000                         dw          #0
+03f8 ---- 0000                         dw          #0
+03f9 ---- 0000                         dw          #0
+03fa ---- 0000                         dw          #0
+03fb ---- 0000                         dw          #0
+03fc ---- 0000                         dw          #0
+03fd ---- 0000                         dw          #0
+03fe ---- 0000                         dw          #0
+03ff ---- 0000                         dw          #0
+0400 ---- 0000                         dw          #0
+0401 ---- 0000                         dw          #0
+0402 ---- 0000                         dw          #0
+0403 ---- 0000                         dw          #0
+0404 ---- 0000                         dw          #0
+0405 ---- 0000                         dw          #0
+0406 ---- 0000                         dw          #0
+0407 ---- 0000                         dw          #0
+0408 ---- 0000                         dw          #0
+0409 ---- 0000                         dw          #0
+040a ---- 0000                         dw          #0
+040b ---- 0000                         dw          #0
+040c ---- 0000                         dw          #0
+040d ---- 0000                         dw          #0
+040e ---- 0000                         dw          #0
+040f ---- 0000                         dw          #0
+0410 ---- 0000                         dw          #0
+0411 ---- 0000                         dw          #0
+0412 ---- 0000                         dw          #0
+0413 ---- 0000                         dw          #0
+0414 ---- 0000                         dw          #0
+0415 ---- 0000                         dw          #0
+0416 ---- 0000                         dw          #0
+0417 ---- 0000                         dw          #0
+0418 ---- 0000                         dw          #0
+0419 ---- 0000                         dw          #0
+041a ---- 0000                         dw          #0
+041b ---- 0000                         dw          #0
+041c ---- 0000                         dw          #0
+041d ---- 0000                         dw          #0
+041e ---- 0000                         dw          #0
+041f ---- 0000                         dw          #0
+0420 ---- 0000                         dw          #0
+0421 ---- 0000                         dw          #0
+0422 ---- 0000                         dw          #0
+0423 ---- 0000                         dw          #0
+0424 ---- 0000                         dw          #0
+0425 ---- 0000                         dw          #0
+0426 ---- 0000                         dw          #0
+0427 ---- 0000                         dw          #0
+0428 ---- 0000                         dw          #0
+0429 ---- 0000                         dw          #0
+042a ---- 0000                         dw          #0
+042b ---- 0000                         dw          #0
+042c ---- 0000                         dw          #0
+042d ---- 0000                         dw          #0
+042e ---- 0000                         dw          #0
+042f ---- 0000                         dw          #0
+0430 ---- 0000                         dw          #0
+0431 ---- 0000                         dw          #0
+0432 ---- 0000                         dw          #0
+0433 ---- 0000                         dw          #0
+0434 ---- 0000                         dw          #0
+0435 ---- 0000                         dw          #0
+0436 ---- 0000                         dw          #0
+0437 ---- 0000                         dw          #0
+0438 ---- 0000                         dw          #0
+0439 ---- 0000                         dw          #0
+043a ---- 0000                         dw          #0
+043b ---- 0000                         dw          #0
+043c ---- 0000                         dw          #0
+043d ---- 0000                         dw          #0
+043e ---- 0000                         dw          #0
+043f ---- 0000                         dw          #0
+0440 ---- 0000                         dw          #0
+0441 ---- 0000                         dw          #0
+0442 ---- 0000                         dw          #0
+0443 ---- 0000                         dw          #0
+0444 ---- 0000                         dw          #0
+0445 ---- 0000                         dw          #0
+0446 ---- 0000                         dw          #0
+0447 ---- 0000                         dw          #0
+0448 ---- 0000                         dw          #0
+0449 ---- 0000                         dw          #0
+044a ---- 0000                         dw          #0
+044b ---- 0000                         dw          #0
+044c ---- 0000                         dw          #0
+044d ---- 0000                         dw          #0
+044e ---- 0000                         dw          #0
+044f ---- 0000                         dw          #0
+0450 ---- 0000                         dw          #0
+0451 ---- 0000                         dw          #0
+0452 ---- 0000                         dw          #0
+0453 ---- 0000                         dw          #0
+0454 ---- 0000                         dw          #0
+0455 ---- 0000                         dw          #0
+0456 ---- 0000                         dw          #0
+0457 ---- 0000                         dw          #0
+0458 ---- 0000                         dw          #0
+0459 ---- 0000                         dw          #0
+045a ---- 0000                         dw          #0
+045b ---- 0000                         dw          #0
+045c ---- 0000                         dw          #0
+045d ---- 0000                         dw          #0
+045e ---- 0000                         dw          #0
+045f ---- 0000                         dw          #0
+0460 ---- 0000                         dw          #0
+0461 ---- 0000                         dw          #0
+0462 ---- 0000                         dw          #0
+0463 ---- 0000                         dw          #0
+0464 ---- 0000                         dw          #0
+0465 ---- 0000                         dw          #0
+0466 ---- 0000                         dw          #0
+0467 ---- 0000                         dw          #0
+0468 ---- 0000                         dw          #0
+0469 ---- 0000                         dw          #0
+046a ---- 0000                         dw          #0
+046b ---- 0000                         dw          #0
+046c ---- 0000                         dw          #0
+046d ---- 0000                         dw          #0
+046e ---- 0000                         dw          #0
+046f ---- 0000                         dw          #0
+0470 ---- 0000                         dw          #0
+0471 ---- 0000                         dw          #0
+0472 ---- 0000                         dw          #0
+0473 ---- 0000                         dw          #0
+0474 ---- 0000                         dw          #0
+0475 ---- 0000                         dw          #0
+0476 ---- 0000                         dw          #0
+0477 ---- 0000                         dw          #0
+0478 ---- 0000                         dw          #0
+0479 ---- 0000                         dw          #0
+047a ---- 0000                         dw          #0
+047b ---- 0000                         dw          #0
+047c ---- 0000                         dw          #0
+047d ---- 0000                         dw          #0
+047e ---- 0000                         dw          #0
+047f ---- 0000                         dw          #0
+0480 ---- 0000                         dw          #0
+0481 ---- 0000                         dw          #0
+0482 ---- 0000                         dw          #0
+0483 ---- 0000                         dw          #0
+0484 ---- 0000                         dw          #0
+0485 ---- 0000                         dw          #0
+0486 ---- 0000                         dw          #0
+0487 ---- 0000                         dw          #0
+0488 ---- 0000                         dw          #0
+0489 ---- 0000                         dw          #0
+048a ---- 0000                         dw          #0
+048b ---- 0000                         dw          #0
+048c ---- 0000                         dw          #0
+048d ---- 0000                         dw          #0
+048e ---- 0000                         dw          #0
+048f ---- 0000                         dw          #0
+0490 ---- 0000                         dw          #0
+0491 ---- 0000                         dw          #0
+0492 ---- 0000                         dw          #0
+0493 ---- 0000                         dw          #0
+0494 ---- 0000                         dw          #0
+0495 ---- 0000                         dw          #0
+0496 ---- 0000                         dw          #0
+0497 ---- 0000                         dw          #0
+0498 ---- 0000                         dw          #0
+0499 ---- 0000                         dw          #0
+049a ---- 0000                         dw          #0
+049b ---- 0000                         dw          #0
+049c ---- 0000                         dw          #0
+049d ---- 0000                         dw          #0
+049e ---- 0000                         dw          #0
+049f ---- 0000                         dw          #0
+04a0 ---- 0000                         dw          #0
+04a1 ---- 0000                         dw          #0
+04a2 ---- 0000                         dw          #0
+04a3 ---- 0000                         dw          #0
+04a4 ---- 0000                         dw          #0
+04a5 ---- 0000                         dw          #0
+04a6 ---- 0000                         dw          #0
+04a7 ---- 0000                         dw          #0
+04a8 ---- 0000                         dw          #0
+04a9 ---- 0000                         dw          #0
+04aa ---- 0000                         dw          #0
+04ab ---- 0000                         dw          #0
+04ac ---- 0000                         dw          #0
+04ad ---- 0000                         dw          #0
+04ae ---- 0000                         dw          #0
+               powerSensor/state:
+               powerSensor/state/alertEnabled:
+04af ---- 0001                         dw          #1
+               powerSensor/state/count:
+04b0 ---- 0000                         dw          #0
+               powerSensor/state/exit:
+04b1 ---- 0000                         dw          #0
+               powerSensor/state/head:
+04b2 ---- 0000                         dw          #0
+               powerSensor/state/tail:
+04b3 ---- 0000                         dw          #0
+               .segment end "Task: Power Sensor"
+
+
+               .segment begin "Task: Power Sensor"
+               powerSensor/initialize:
+               ;? gpioCfgMode(AUXIO_O_LED,GPIO_MODE_OUTPUT);
+04b4 ---- 89ac                         in          R0, [#(IOP_AIODIO0_IOMODEL + (11 >> 2))]
+04b5 86ff 803f                         and         R0, #((~(0x0003 << (2 * (11 & 0x3)))) & 0xFFFF)
+04b7 ---- 8200                         or          R0, #(0 << (2 * (11 & 0x3)))
+04b8 ---- 8bac                         out         R0, [#(IOP_AIODIO0_IOMODEL + (11 >> 2))]
+               ;? gpioClearOutput(AUXIO_O_LED);
+04b9 ---- 47bb                         iobclr      #(11 & 0x7), [#(IOP_AIODIO0_GPIODOUT + (11 >> 3))]
+               ;? fwScheduleTask(1);
+04ba ---- 0001                         ld          R0, #1
+04bb ---- 0c9e                         st          R0, [#(pFwTaskExecuteScheduleTable + 0)]
+               ;?
+               powerSensor/initializeDone:
+04bc ---- adb7                         rts
+
+
+
+
+               powerSensor/execute:
+               ;? gpioSetOutput(AUXIO_O_LED);
+04bd ---- 67bb                         iobset      #(11 & 0x7), [#(IOP_AIODIO0_GPIODOUT + (11 >> 3))]
+               ;? // Select ADC input
+               ;? adcSelectGpioInput(AUXIO_A_SENSOR_OUTPUT);
+04be ---- 7019                         ld          R7, #25
+04bf 8604 14f9                         jsr         AdccompbSelectGpioInput
+               ;?
+               ;? // Enable the ADC
+               ;? adcEnableSync(ADC_REF_VDDS_REL, ADC_SAMPLE_TIME_2P7_US, ADC_TRIGGER_AUX_TIMER0);
+04c1 ---- 0009                         ld          R0, #((8 | (((3 < 6) & (!8)) * ADI16_ADCREF_REF_ON_IDLE)) | ADI16_ADCREF_EN)
+04c2 ---- 8b9f                         out         R0, [#IOP_ADISET_ADCREF]
+04c3 8636 0201                         ld          R0, #((54 << 8) | 0x0001)
+04c5 ---- 6467                         iobset      #IOB_SYSIF_ADCCLKCTL_REQ, [#IOP_SYSIF_ADCCLKCTL]
+               /id1145:
+04c6 ---- 2567                         iobtst      #IOB_SYSIF_ADCCLKCTL_ACK, [#IOP_SYSIF_ADCCLKCTL]
+04c7 ---- a6fe                         biob0       /id1145
+04c8 ---- 8b8e                         out         R0, [#IOP_ANAIF_ADCCTL]
+04c9 ---- 0078                         ld          R0, #BV_ADI16_ADC_SMPL_CYCLE_EXP
+04ca ---- 8ba6                         out         R0, [#IOP_ADICLR_ADC]
+04cb ---- 0018                         ld          R0, #(3 << BI_ADI16_ADC_SMPL_CYCLE_EXP)
+04cc ---- 8b9e                         out         R0, [#IOP_ADISET_ADC]
+04cd ---- 0003                         ld          R0, #(ADI16_ADC_EN | ADI16_ADC_RESET_N)
+04ce ---- 8b9e                         out         R0, [#IOP_ADISET_ADC]
+04cf ---- 8b9e                         out         R0, [#IOP_ADISET_ADC]
+04d0 ---- 8b9e                         out         R0, [#IOP_ADISET_ADC]
+04d1 ---- 8b9e                         out         R0, [#IOP_ADISET_ADC]
+               ;?
+               ;? // Start ADC trigger timer at 5 kHz (200 us) on 2Mhz clock
+               ;? timer0Start(TIMER0_MODE_PERIODICAL, 400, 0);
+04d2 ---- 0190                         ld          R0, #400
+04d3 ---- 8b81                         out         R0, [#IOP_TIMER01_T0TARGET]
+04d4 ---- 0001                         ld          R0, #((0 << IOB_TIMER01_TXCFG_PRE) | (1 * BV_TIMER01_TXCFG_RELOAD))
+04d5 ---- 8b7d                         out         R0, [#IOP_TIMER01_T0CFG]
+04d6 ---- 647f                         iobset      #0, [#IOP_TIMER01_T0CTL]
+               ;?
+               ;? state.count = 0;
+04d7 ---- 0000                         ld          R0, #0
+04d8 8604 0cb0                         st          R0, [#powerSensor/state/count]
+               ;?
+               ;? // Loop until the application sets the exit flag
+               ;? while (state.count < BUFFER_SIZE) {
+               /id1150:
+04da 8604 08b0                         ld          R0, [#powerSensor/state/count]
+04dc 8604 8a00                         cmp         R0, #1024
+04de ---- a60d                         bgeu        /id1151
+               ;?
+               ;?     // Wait for the next ADC sample and store it
+               ;?     // Note: After halting the Sensor Controller during task debugging, this adcReadFifo() call will
+               ;?     // hang due to ADC FIFO overflow. This happens because the ADC timer trigger keeps running while the
+               ;?     // Sensor Controller is halted. This issue will not occur when debugging the System CPU application.
+               ;?     U16 n = state.count;
+04df 8604 08b0                             ld          R0, [#powerSensor/state/count]
+               ;?     adcReadFifo(output.pSamples[n]);
+04e1 ---- edb1                             wev1        #WEVSEL_ADC_FIFO_NOT_EMPTY
+04e2 ---- 9990                             in          R1, [#IOP_ANAIF_ADCFIFO]
+04e3 ---- 20af                             ld          R2, #(powerSensor/output/pSamples + 0)
+04e4 ---- 9f3a                             st          R1, [R2+R0]
+               ;?
+               ;?     // Update the head index
+               ;? //    utilIncrAndWrap(n, BUFFER_SIZE; state.head);
+               ;?
+               ;?     state.count = state.count + 1;
+04e5 8604 08b0                             ld          R0, [#powerSensor/state/count]
+04e7 ---- 8801                             add         R0, #1
+04e8 8604 0cb0                             st          R0, [#powerSensor/state/count]
+               ;? }
+04ea 8604 04da                         jmp         /id1150
+               /id1151:
+               ;?
+               ;? // Stop the ADC trigger and flush the ADC FIFO
+               ;? timer0Stop();
+04ec ---- 447f                         iobclr      #0, [#IOP_TIMER01_T0CTL]
+               ;? adcFlushFifo();
+04ed ---- 658e                         iobset      #1, [#IOP_ANAIF_ADCCTL]
+04ee ---- 458e                         iobclr      #1, [#IOP_ANAIF_ADCCTL]
+               ;?
+               ;? // Disable the ADC
+               ;? adcDisable();
+04ef 8605 1504                         jsr         AdcDisable
+               ;?
+               ;? gpioClearOutput(AUXIO_O_LED);
+04f1 ---- 47bb                         iobclr      #(11 & 0x7), [#(IOP_AIODIO0_GPIODOUT + (11 >> 3))]
+               ;? fwGenAlertInterrupt();
+04f2 ---- 08a4                         ld          R0, [#fwCtrlInt/bvTaskIoAlert]
+04f3 ---- 8201                         or          R0, #(1 << 0)
+04f4 ---- 0ca4                         st          R0, [#fwCtrlInt/bvTaskIoAlert]
+               ;? fwScheduleTask(1);
+04f5 ---- 0001                         ld          R0, #1
+04f6 ---- 0c9e                         st          R0, [#(pFwTaskExecuteScheduleTable + 0)]
+               powerSensor/executeDone:
+04f7 ---- adb7                         rts
+
+
+
+
+               powerSensor/terminate:
+               ;?
+               powerSensor/terminateDone:
+04f8 ---- adb7                         rts
+               .segment end "Task: Power Sensor"
+
+
+               .segment begin "Procedure Library"
+               ; PARAMETERS:
+               ;     R7 = AUX I/O index (19-26)
+               ;
+               ; CLOBBERS:
+               ;     R6, R7
+               AdccompbSelectGpioInput:
+                                       ; Make sure that the AUX I/O index is valid
+04f9 ---- f8ed                         add         R7, #-ADI_ANALOG_MUX_AUXIO_BASE_INDEX
+04fa ---- f007                         and         R7, #0x0007
+
+                                       ; Disconnect all signals
+04fb 86ff 63f8                         ld          R6, #(BV_ADI16_MUX2_ADCCOMPB_IN | BV_ADI16_MUX3_ADCCOMPB_IN)
+04fd ---- eba3                         out         R6, [#IOP_ADICLR_MUX2_MUX3]
+
+                                       ; Connect the specified GPIO
+04fe 8680 6000                         ld          R6, #ADI16_MUX3_ADCCOMPB_IN_AUXIO0
+0500 ---- ed8f                         lsr         R6, R7
+0501 ---- eb9b                         out         R6, [#IOP_ADISET_MUX2_MUX3]
+
+                                       ; Flush the ADI interface
+0502 ---- eb9b                         out         R6, [#IOP_ADISET_MUX2_MUX3]
+
+0503 ---- adb7                         rts
+
+
+
+
+               ; CLOBBERS:
+               ;     R7
+               AdcDisable:
+                                       ; Disable the ADC reference
+0504 ---- 7079                         ld          R7, #((ADI16_ADCREF_EN | ADI16_ADCREF_REF_ON_IDLE) | (ADI16_ADCREF_SRC | (ADI16_ADCREF_EXT | ADI16_ADCREF_IOMUX)))
+0505 ---- fba7                         out         R7, [#IOP_ADICLR_ADCREF]
+
+                                       ; Assert reset and disable the ADC
+0506 ---- 71fb                         ld          R7, #((ADI16_ADC_EN | ADI16_ADC_RESET_N) | (BV_ADI16_ADC_SMPL_CYCLE_EXP | (BV_ADI16_ADC_SMPL_MODE | ADI16_ADC_SCALE_DIS)))
+0507 ---- fba6                         out         R7, [#IOP_ADICLR_ADC]
+
+                                       ; Flush the ADI interface
+0508 ---- fba6                         out         R7, [#IOP_ADICLR_ADC]
+
+                                       ; Disable the ADC clock (no need to wait since IOB_SYSIF_ADCCLKCTL_ACK goes low immediately)
+0509 ---- 4467                         iobclr      #IOB_SYSIF_ADCCLKCTL_REQ, [#IOP_SYSIF_ADCCLKCTL]
+
+                                       ; Disable the ADC data interface
+050a ---- 448e                         iobclr      #0, [#IOP_ANAIF_ADCCTL]
+
+050b ---- adb7                         rts
+               .segment end "Procedure Library"
+
+
+; Generated by DESKTOP-MMLJVDE at 2021-12-07 23:53:59.208

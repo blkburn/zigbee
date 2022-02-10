@@ -1,0 +1,579 @@
+EESchema-LIBRARY Version 2.4
+#encoding utf-8
+#
+# 1188E-1K2-V
+#
+DEF 1188E-1K2-V SW 0 40 Y Y 1 L N
+F0 "SW" 0 100 50 H V L CNN
+F1 "1188E-1K2-V" 0 200 50 H V L CNN
+F2 "Diptronics-1188E-1K2-V-0-0-*" 0 300 50 H I L CNN
+F3 "https://www.weltroniker.de/DB-Pool/DIP_1188.pdf" 0 400 50 H I L CNN
+F4 "No" 0 500 50 H I L CNN "automotive"
+F5 "Switch" 0 600 50 H I L CNN "category"
+F6 "50mA" 0 700 50 H I L CNN "contact current rating"
+F7 "100mΩ" 0 800 50 H I L CNN "contact resistance"
+F8 "Electromechanical" 0 900 50 H I L CNN "device class L1"
+F9 "Switches" 0 1000 50 H I L CNN "device class L2"
+F10 "Tactile Switches" 0 1100 50 H I L CNN "device class L3"
+F11 "50000Cycles" 0 1200 50 H I L CNN "electromechanical life"
+F12 "3.5mm" 0 1300 50 H I L CNN "height"
+F13 "Yes" 0 1400 50 H I L CNN "lead free"
+F14 "9fc768fd69c57330" 0 1500 50 H I L CNN "library id"
+F15 "Diptronics" 0 1600 50 H I L CNN "manufacturer"
+F16 "L1, 0MM Horiz SMT 1, 6N Ag Post" 0 1700 50 H I L CNN "mouser description"
+F17 "113-1188E1K2VTR" 0 1800 50 H I L CNN "mouser part number"
+F18 "160gf" 0 1900 50 H I L CNN "operating force"
+F19 "SW_7MM80_3MM50" 0 2000 50 H I L CNN "package"
+F20 "Yes" 0 2100 50 H I L CNN "rohs"
+F21 "+70°C" 0 2200 50 H I L CNN "temperature range high"
+F22 "-25°C" 0 2300 50 H I L CNN "temperature range low"
+F23 "SPST-NO" 0 2400 50 H I L CNN "throw configuration"
+F24 "12V" 0 2500 50 H I L CNN "voltage rating DC"
+DRAW
+C 230 -200 20 1 1 0 N
+C 370 -200 20 1 1 0 N
+P 2 1 1 0 200 0 410 0 N
+P 2 1 1 0 250 -190 350 -130 N
+X 1 1 100 0 100 R 40 0 1 1 P
+X 2 2 500 0 100 L 40 0 1 1 P
+X 3 3 100 -200 100 R 40 0 1 1 P
+X 4 4 500 -200 100 L 40 0 1 1 P
+ENDDRAW
+ENDDEF
+#
+# BAT-HLD-001
+#
+DEF BAT-HLD-001 BT 0 40 Y Y 1 L N
+F0 "BT" 0 0 50 H V L CNN
+F1 "BAT-HLD-001" 0 100 50 H V L CNN
+F2 "Linx-BAT-HLD-001-*" 0 200 50 H I L CNN
+F3 "https://www.linxtechnologies.com/resources/diagrams/bat-hld-001.pdf" 0 300 50 H I L CNN
+F4 "Batt" 0 400 50 H I L CNN "category"
+F5 "HOLDER BATTERY 20MM COIN" 0 500 50 H I L CNN "digikey description"
+F6 "BAT-HLD-001-ND" 0 600 50 H I L CNN "digikey part number"
+F7 "yes" 0 700 50 H I L CNN "lead free"
+F8 "46b8dec5928a9d45" 0 800 50 H I L CNN "library id"
+F9 "Linx" 0 900 50 H I L CNN "manufacturer"
+F10 "Surface Mount" 0 1000 50 H I L CNN "mounting type"
+F11 "712-BAT-HLD-001" 0 1100 50 H I L CNN "mouser part number"
+F12 "BAT_SMT_21MM1_15MM5" 0 1200 50 H I L CNN "package"
+F13 "yes" 0 1300 50 H I L CNN "rohs"
+DRAW
+T 1 100 -120 60 1 1 0 + Normal 0 C C
+T 0 150 -500 60 1 1 0 - Normal 0 C C
+P 2 1 1 0 50 -400 -50 -400 N
+P 2 1 1 0 50 -260 -50 -260 N
+P 2 1 1 0 100 -330 -100 -330 N
+P 2 1 1 0 100 -200 -100 -200 N
+X CATHODE 1 0 -500 100 U 40 0 1 1 U
+X ANODE 2 0 -100 100 D 40 0 1 1 U
+ENDDRAW
+ENDDEF
+#
+# BLM18HE152SN1D
+#
+DEF BLM18HE152SN1D FB 0 40 Y Y 1 L N
+F0 "FB" 0 200 50 H V L CNN
+F1 "BLM18HE152SN1D" 0 300 50 H V L CNN
+F2 "Murata-BLM18-0.15-t0.8-0-0-*" 0 400 50 H I L CNN
+F3 "https://www.murata.com/en-us/products/productdetail?partno=BLM18HE152SN1%23" 0 500 50 H I L CNN
+F4 "500mA" 0 600 50 H I L CNN "RMS current"
+F5 "No" 0 700 50 H I L CNN "automotive"
+F6 "FBead" 0 900 50 H I L CNN "category"
+F7 "Passive Components" 0 1000 50 H I L CNN "device class L1"
+F8 "EMI / RFI Components" 0 1100 50 H I L CNN "device class L2"
+F9 "Ferrite Beads and Chips" 0 1200 50 H I L CNN "device class L3"
+F10 "0.95mm" 0 1300 50 H I L CNN "height"
+F11 "1500Ω @ 100MHz" 0 1400 50 H I L CNN "impedance at frequency"
+F12 "CAPC16080X80" 0 1500 50 H I L CNN "ipc land pattern name"
+F13 "Yes" 0 1600 50 H I L CNN "lead free"
+F14 "79fe80c99abd3e2a" 0 1700 50 H I L CNN "library id"
+F15 "Murata" 0 1800 50 H I L CNN "manufacturer"
+F16 "0603" 0 1900 50 H I L CNN "package"
+F17 "Yes" 0 2000 50 H I L CNN "rohs"
+F18 "0.5Ω" 0 2100 50 H I L CNN "series resistance"
+F19 "+125℃" 0 2200 50 H I L CNN "temperature range high"
+F20 "-55°C" 0 2300 50 H I L CNN "temperature range low"
+F21 "100MHz" 0 2400 50 H I L CNN "test frequency"
+F22 "25%" 0 2500 50 H I L CNN "tolerance"
+DRAW
+P 2 1 1 0 170 -30 280 80 N
+P 2 1 1 0 220 -80 170 -30 N
+P 2 1 1 0 220 -80 330 30 N
+P 2 1 1 0 280 80 330 30 N
+X 1 1 100 0 100 R 40 0 1 1 P
+X 2 2 400 0 100 L 40 0 1 1 P
+ENDDRAW
+ENDDEF
+#
+# CC2652
+#
+DEF CC2652 U 0 40 Y Y 1 F N
+F0 "U" -500 950 50 H V C CNN
+F1 "CC2652" 0 700 50 H V C CNB
+F2 "" -500 950 50 H I C CNN
+F3 "" -500 950 50 H I C CNN
+DRAW
+S -500 950 -500 950 0 1 0 N
+S 600 -1300 -550 850 0 1 0 f
+X DIO_0 1 -650 750 100 R 50 50 1 1 B
+X DIO_9 10 -650 -150 100 R 50 50 1 1 B
+X DIO_10 11 -650 -250 100 R 50 50 1 1 B
+X DIO_11 12 -650 -350 100 R 50 50 1 1 B
+X DIO_12 13 -650 -450 100 R 50 50 1 1 B
+X DIO_13 14 -650 -550 100 R 50 50 1 1 B
+X DIO_14 15 -650 -650 100 R 50 50 1 1 B
+X DIO_15 16 -650 -750 100 R 50 50 1 1 B
+X JTAG_TMSC 17 700 -900 100 L 50 50 1 1 B
+X JTAG_TCKC 18 700 -1000 100 L 50 50 1 1 I
+X JTAG_TDO_/_DIO_16 19 700 -1100 100 L 50 50 1 1 B
+X DIO_1 2 -650 650 100 R 50 50 1 1 B
+X JTAG_TDI_/_DIO_17 20 700 -1200 100 L 50 50 1 1 B
+X DIO_18 21 700 750 100 L 50 50 1 1 B
+X DIO_19 22 700 650 100 L 50 50 1 1 B
+X DIO_20 23 700 550 100 L 50 50 1 1 B
+X DIO_21 24 700 450 100 L 50 50 1 1 B
+X DIO_22 25 700 350 100 L 50 50 1 1 B
+X DIO_23 26 700 250 100 L 50 50 1 1 B
+X DIO_24 27 700 150 100 L 50 50 1 1 B
+X DIO_25 28 700 50 100 L 50 50 1 1 B
+X DIO_26 29 700 -50 100 L 50 50 1 1 B
+X DIO_2 3 -650 550 100 R 50 50 1 1 B
+X DIO_27 30 700 -150 100 L 50 50 1 1 B
+X DIO_28 31 700 -250 100 L 50 50 1 1 B
+X DIO_29 32 700 -350 100 L 50 50 1 1 B
+X DIO_30 33 700 -450 100 L 50 50 1 1 B
+X VDD 34 -650 -900 100 R 50 50 1 1 I
+X GND 35 -650 -1000 100 R 50 50 1 1 I
+X ~RESET 36 -650 -1100 100 R 50 50 1 1 I
+X DIO_3 4 -650 450 100 R 50 50 1 1 B
+X DIO_4 5 -650 350 100 R 50 50 1 1 B
+X DIO_5 6 -650 250 100 R 50 50 1 1 B
+X DIO_6 7 -650 150 100 R 50 50 1 1 B
+X DIO_7 8 -650 50 100 R 50 50 1 1 B
+X DIO_8 9 -650 -50 100 R 50 50 1 1 B
+ENDDRAW
+ENDDEF
+#
+# EVQ-P7A01P-switch2
+#
+DEF EVQ-P7A01P-switch2 SW 0 40 Y Y 1 L N
+F0 "SW" 0 0 50 H V L CNN
+F1 "EVQ-P7A01P-switch2" 0 100 50 H V L CNN
+F2 "Panasonic-EVQ-P7A01P-0-0-*" 0 200 50 H I L CNN
+F3 "https://industrial.panasonic.com/cdbs/www-data/pdf/ATK0000/ATK0000C378.pdf" 0 300 50 H I L CNN
+F4 "No" 0 400 50 H I L CNN "automotive"
+F5 "Switch" 0 500 50 H I L CNN "category"
+F6 "50mA" 0 600 50 H I L CNN "contact current rating"
+F7 "500mΩ" 0 700 50 H I L CNN "contact resistance"
+F8 "Electromechanical" 0 800 50 H I L CNN "device class L1"
+F9 "Switches" 0 900 50 H I L CNN "device class L2"
+F10 "Tactile Switches" 0 1000 50 H I L CNN "device class L3"
+F11 "SWITCH TACTILE SPST-NO 0.05A 12V" 0 1100 50 H I L CNN "digikey description"
+F12 "P16763CT-ND" 0 1200 50 H I L CNN "digikey part number"
+F13 "100000Cycles" 0 1300 50 H I L CNN "electromechanical life"
+F14 "1.55mm" 0 1400 50 H I L CNN "height"
+F15 "Yes" 0 1500 50 H I L CNN "lead free"
+F16 "2f293019bba4f771" 0 1600 50 H I L CNN "library id"
+F17 "Panasonic" 0 1700 50 H I L CNN "manufacturer"
+F18 "Surface Mount" 0 1800 50 H I L CNN "mount"
+F19 "SWITCH TACTILE SPST-NO 0.05A 12V" 0 1900 50 H I L CNN "mouser description"
+F20 "667-EVQP7A01P" 0 2000 50 H I L CNN "mouser part number"
+F21 "2.2N" 0 2100 50 H I L CNN "operating force"
+F22 "SMT_SW_3MM5_2MM9" 0 2200 50 H I L CNN "package"
+F23 "Yes" 0 2300 50 H I L CNN "rohs"
+F24 "+70°C" 0 2400 50 H I L CNN "temperature range high"
+F25 "-20°C" 0 2500 50 H I L CNN "temperature range low"
+F26 "SPST-NO" 0 2600 50 H I L CNN "throw configuration"
+F27 "12V" 0 2700 50 H I L CNN "voltage rating DC"
+DRAW
+C 130 -200 20 1 1 0 N
+C 270 -200 20 1 1 0 N
+P 2 1 1 0 0 -200 100 -200 N
+P 2 1 1 0 150 -190 250 -130 N
+P 2 1 1 0 400 -200 300 -200 N
+X 1 1 400 -300 200 U 40 0 1 1 P
+X 1' 1' 400 -100 200 D 40 0 1 1 P
+X 2 2 0 -300 200 U 40 0 1 1 P
+X 2' 2' 0 -100 200 D 40 0 1 1 P
+ENDDRAW
+ENDDEF
+#
+# LTR390
+#
+DEF LTR390 X 0 40 Y Y 1 L N
+F0 "X" 400 400 59 H V R TNN
+F1 "LTR390" 0 0 50 H I C CNN
+F2 "" 0 0 50 H I C CNN
+F3 "" 0 0 50 H I C CNN
+DRAW
+T 0 100 -400 59 0 1 0 LTR390 Normal 0 L B
+P 2 1 0 0 -300 -300 -300 300 N
+P 2 1 0 0 -300 300 300 300 N
+P 2 1 0 0 300 -300 -300 -300 N
+P 2 1 0 0 300 300 300 -300 N
+X VDD 1 0 500 200 D 50 50 1 0 W
+X GND 3 0 -500 200 U 50 50 1 0 W
+X SCL 4 -500 100 200 R 50 50 1 0 B
+X INT 5 500 0 200 L 50 50 1 0 B
+X SDA 6 -500 -100 200 R 50 50 1 0 B
+ENDDRAW
+ENDDEF
+#
+# MAX6326UR22+
+#
+DEF MAX6326UR22+ U 0 10 Y Y 1 L N
+F0 "U" 1200 400 60 H V C CNN
+F1 "MAX6326UR22+" 1200 300 60 H V C CNN
+F2 "21-0051H_MXM" 1200 240 60 H I C CNN
+F3 "" 0 0 60 H V C CNN
+$FPLIST
+ 21-0051H_MXM
+ 21-0051H_MXM-M
+ 21-0051H_MXM-L
+$ENDFPLIST
+DRAW
+P 2 1 1 5 300 -300 2100 -300 N
+P 2 1 1 5 300 200 300 -300 N
+P 2 1 1 5 2100 -300 2100 200 N
+P 2 1 1 5 2100 200 300 200 N
+X GND 1 0 0 300 R 59 59 1 1 W
+X *RESET 2 2400 -100 300 L 59 59 1 1 O
+X VCC 3 2400 0 300 L 59 59 1 1 W
+ENDDRAW
+ENDDEF
+#
+# MS88SF2_nRF52840
+#
+DEF MS88SF2_nRF52840 U 0 40 Y Y 1 F N
+F0 "U" -500 950 50 H V C CNN
+F1 "MS88SF2_nRF52840" 200 900 50 H V C CNB
+F2 "" -500 950 50 H I C CNN
+F3 "" -500 950 50 H I C CNN
+DRAW
+S -500 950 -500 950 0 1 0 N
+S 600 -850 -550 850 0 1 0 f
+X GND 1 700 -600 100 L 50 50 1 1 B
+X P0.08 10 -650 -50 100 R 50 50 1 1 B
+X P1.09 11 -650 -150 100 R 50 50 1 1 B
+X P0.12 12 -650 -250 100 R 50 50 1 1 B
+X GND 13 700 -700 100 L 50 50 1 1 B
+X VDD 14 -650 -450 100 R 50 50 1 1 B
+X VDDH 15 -650 -550 100 R 50 50 1 1 B
+X D- 16 700 -450 100 L 50 50 1 1 B
+X D+ 17 700 -350 100 L 50 50 1 1 B
+X P0.13 18 700 -250 100 L 50 50 1 1 I
+X P0.15 19 700 -150 100 L 50 50 1 1 B
+X P1.13 2 -650 750 100 R 50 50 1 1 B
+X P0.18 20 700 -50 100 L 50 50 1 1 B
+X P0.20 21 700 50 100 L 50 50 1 1 B
+X P0.22 22 700 150 100 L 50 50 1 1 B
+X P0.24 23 700 250 100 L 50 50 1 1 B
+X P1.00 24 700 350 100 L 50 50 1 1 B
+X SWDIO 25 700 450 100 L 50 50 1 1 B
+X SWDCLK 26 700 550 100 L 50 50 1 1 B
+X P0.09 27 700 650 100 L 50 50 1 1 B
+X P0.10 28 700 750 100 L 50 50 1 1 B
+X P1.15 3 -650 650 100 R 50 50 1 1 B
+X P0.02 4 -650 550 100 R 50 50 1 1 B
+X P0.29 5 -650 450 100 R 50 50 1 1 B
+X P0.31 6 -650 350 100 R 50 50 1 1 B
+X P0.26 7 -650 250 100 R 50 50 1 1 B
+X P0.04 8 -650 150 100 R 50 50 1 1 B
+X P0.06 9 -650 50 100 R 50 50 1 1 B
+ENDDRAW
+ENDDEF
+#
+# MX25R8035FM1IH1
+#
+DEF MX25R8035FM1IH1 U 0 40 Y Y 1 F N
+F0 "U" 0 200 50 H V L CNN
+F1 "MX25R8035FM1IH1" 0 300 50 H V L CNN
+F2 "Package_SO:SOP-8_3.9x4.9mm_P1.27mm" 0 400 50 H I L CNN
+F3 "" 0 500 50 H I L CNN
+F4 "12ns" 0 600 50 H I L CNN "access time"
+F5 "+85°C" 0 700 50 H I L CNN "ambient temperature range high"
+F6 "-40°C" 0 800 50 H I L CNN "ambient temperature range low"
+F7 "No" 0 900 50 H I L CNN "automotive"
+F8 "IC" 0 1000 50 H I L CNN "category"
+F9 "Integrated Circuits (ICs)" 0 1100 50 H I L CNN "device class L1"
+F10 "Memory" 0 1200 50 H I L CNN "device class L2"
+F11 "Flash" 0 1300 50 H I L CNN "device class L3"
+F12 "IC FLASH 8M SPI 33MHZ 8USON" 0 1400 50 H I L CNN "digikey description"
+F13 "1092-1207-1-ND" 0 1500 50 H I L CNN "digikey part number"
+F14 "http://www.macronix.com/Lists/ApplicationNote/Attachments/1997/AN0159V4-%20Recommended%20PCB%20Pad%20Layouts%20for%208-USON%20and%208-WSON%20Packages_2.pdf" 0 1600 50 H I L CNN "footprint url"
+F15 "33MHz" 0 1700 50 H I L CNN "frequency"
+F16 "0.6mm" 0 1800 50 H I L CNN "height"
+F17 "SPI" 0 1900 50 H I L CNN "interface"
+F18 "DFN200X300X55-8" 0 2000 50 H I L CNN "ipc land pattern name"
+F19 "Yes" 0 2100 50 H I L CNN "lead free"
+F20 "845247ac2f357ca3" 0 2200 50 H I L CNN "library id"
+F21 "Macronix International Co., Ltd." 0 2300 50 H I L CNN "manufacturer"
+F22 "3.6V" 0 2400 50 H I L CNN "max supply voltage"
+F23 "8Mbits" 0 2500 50 H I L CNN "memory size"
+F24 "FLASH,NOR" 0 2600 50 H I L CNN "memory type"
+F25 "1.65V" 0 2700 50 H I L CNN "min supply voltage"
+F26 "Surface Mount" 0 2800 50 H I L CNN "mounting type"
+F27 "4.5-6mA" 0 2900 50 H I L CNN "nominal supply current"
+F28 "USON8" 0 3000 50 H I L CNN "package"
+F29 "Yes" 0 3100 50 H I L CNN "rohs"
+F30 "0mm" 0 3200 50 H I L CNN "standoff height"
+F31 "+85°C" 0 3300 50 H I L CNN "temperature range high"
+F32 "-40°C" 0 3400 50 H I L CNN "temperature range low"
+DRAW
+S 200 150 1400 -950 0 1 0 f
+S 450 -950 450 -950 0 1 0 N
+S 550 -800 550 -800 0 1 0 N
+X ~CS~ 1 100 -200 100 R 40 40 1 1 I
+X SO/SIO1 2 1500 -200 100 L 40 40 1 1 B
+X ~WP~/SIO2 3 1500 -400 100 L 40 40 1 1 B
+X GND 4 1500 -800 100 L 40 40 1 1 W
+X SI/SIO0 5 1500 0 100 L 40 40 1 1 B
+X SCLK 6 100 -400 100 R 40 40 1 1 I
+X ~RESET~/SIO3 7 1500 -600 100 L 40 40 1 1 B
+X VCC 8 100 0 100 R 40 40 1 1 W
+ENDDRAW
+ENDDEF
+#
+# SI7021-A20-IM1
+#
+DEF SI7021-A20-IM1 U 0 40 Y Y 1 L N
+F0 "U" 0 200 50 H V L CNN
+F1 "SI7021-A20-IM1" 0 300 50 H V L CNN
+F2 "Silicon_Labs-SI7021-A20-IM1-*" 0 400 50 H I L CNN
+F3 "https://www.silabs.com/documents/public/data-sheets/Si7021-A20.pdf" 0 500 50 H I L CNN
+F4 "+125°C" 0 600 50 H I L CNN "ambient temperature range high"
+F5 "-40°C" 0 700 50 H I L CNN "ambient temperature range low"
+F6 "No" 0 800 50 H I L CNN "automotive"
+F7 "IC" 0 900 50 H I L CNN "category"
+F8 "Sensors" 0 1000 50 H I L CNN "device class L1"
+F9 "Temperature and Humidity Sensors" 0 1100 50 H I L CNN "device class L2"
+F10 "unset" 0 1200 50 H I L CNN "device class L3"
+F11 "SENS HUMI/TEMP 3.6V I2C 3% 6DFN" 0 1300 50 H I L CNN "digikey description"
+F12 "336-3143-ND" 0 1400 50 H I L CNN "digikey part number"
+F13 "1.21mm" 0 1500 50 H I L CNN "height"
+F14 "I2C" 0 1600 50 H I L CNN "interface"
+F15 "DFN300X300X121-6" 0 1700 50 H I L CNN "ipc land pattern name"
+F16 "Yes" 0 1800 50 H I L CNN "lead free"
+F17 "044d792dce58de12" 0 1900 50 H I L CNN "library id"
+F18 "Silicon Labs" 0 2000 50 H I L CNN "manufacturer"
+F19 "3.6V" 0 2100 50 H I L CNN "max supply voltage"
+F20 "1.9V" 0 2200 50 H I L CNN "min supply voltage"
+F21 "Humidity/Temperature Sensor Digital Serial (I2C) 6-Pin DFN EP Cut Tape" 0 2300 50 H I L CNN "mouser description"
+F22 "634-SI7021-A20-IM1" 0 2400 50 H I L CNN "mouser part number"
+F23 "90-3500uA" 0 2500 50 H I L CNN "operating supply current"
+F24 "DFN6" 0 2600 50 H I L CNN "package"
+F25 "Yes" 0 2700 50 H I L CNN "rohs"
+F26 "I2C" 0 2800 50 H I L CNN "sensor output"
+F27 "0mm" 0 2900 50 H I L CNN "standoff height"
+F28 "+125°C" 0 3000 50 H I L CNN "temperature range high"
+F29 "-40°C" 0 3100 50 H I L CNN "temperature range low"
+DRAW
+S 200 100 1100 -500 1 1 0 f
+X SDA 1 1200 -100 100 L 40 40 1 1 B
+X GND 2 1200 -400 100 L 40 40 1 1 W
+X NC 3 100 -400 100 R 40 40 1 1 P
+X NC 4 100 -300 100 R 40 40 1 1 P
+X VDD 5 100 0 100 R 40 40 1 1 W
+X SCL 6 1200 0 100 L 40 40 1 1 I C
+X TGND 7 1200 -300 100 L 40 40 1 1 W
+ENDDRAW
+ENDDEF
+#
+# SJ-3524-SMT
+#
+DEF SJ-3524-SMT J 0 40 Y N 1 L N
+F0 "J" -301 326 50 H V L BNN
+F1 "SJ-3524-SMT" -301 -302 50 H V L BNN
+F2 "CUI_SJ-3524-SMT" 0 0 50 H I L BNN
+F3 "" 0 0 50 H I L BNN
+F4 "1.03" 0 0 50 H I L BNN "PARTREV"
+F5 "Manufacturer recommendations" 0 0 50 H I L BNN "STANDARD"
+F6 "CUI Inc" 0 0 50 H I L BNN "MF"
+DRAW
+P 2 0 0 10 -300 -200 300 -200 N
+P 2 0 0 10 -300 300 -300 -200 N
+P 2 0 0 6 -235 -100 -185 -100 N
+P 2 0 0 6 -235 50 -235 -100 N
+P 2 0 0 6 -210 50 -235 50 N
+P 2 0 0 6 -210 50 -210 200 N
+P 2 0 0 6 -210 200 300 200 N
+P 2 0 0 6 -185 -100 -185 50 N
+P 2 0 0 6 -185 50 -210 50 N
+P 2 0 0 6 -90 50 -130 100 N
+P 2 0 0 6 -50 100 -90 50 N
+P 2 0 0 6 -40 -100 0 -50 N
+P 2 0 0 6 0 -50 40 -100 N
+P 2 0 0 6 75 -24 98 -100 N
+P 2 0 0 6 75 -24 122 -24 N
+P 2 0 0 6 100 -99 100 -100 N
+P 2 0 0 6 100 0 100 -24 N
+P 2 0 0 6 100 0 300 0 N
+P 2 0 0 6 122 -24 100 -99 N
+P 2 0 0 10 300 -200 300 -100 N
+P 2 0 0 6 300 -100 40 -100 N
+P 2 0 0 10 300 -100 300 0 N
+P 2 0 0 10 300 0 300 100 N
+P 2 0 0 6 300 100 -50 100 N
+P 2 0 0 10 300 100 300 200 N
+P 2 0 0 10 300 200 300 300 N
+P 2 0 0 10 300 300 -300 300 N
+X ~ 1 500 200 200 L 40 40 0 0 P
+X ~ 2 500 -100 200 L 40 40 0 0 P
+X ~ 3 500 100 200 L 40 40 0 0 P
+X ~ 4 500 0 200 L 40 40 0 0 P
+ENDDRAW
+ENDDEF
+#
+# SJ1-3523N
+#
+DEF SJ1-3523N J 0 40 Y N 1 L N
+F0 "J" -400 300 50 H V L BNN
+F1 "SJ1-3523N" -400 -400 50 H V L BNN
+F2 "CUI_SJ1-3523N" 0 0 50 H I L BNN
+F3 "" 0 0 50 H I L BNN
+F4 "1.02" 0 0 50 H I L BNN "PARTREV"
+F5 "CUI" 0 0 50 H I L BNN "MANUFACTURER"
+F6 "Manufacturer recommendation" 0 0 50 H I L BNN "STANDARD"
+DRAW
+P 2 0 0 10 -400 -200 400 -200 N
+P 2 0 0 10 -400 200 -400 -200 N
+P 2 0 0 6 -275 -100 -275 25 N
+P 2 0 0 6 -275 25 -250 25 N
+P 2 0 0 6 -250 25 -225 25 N
+P 2 0 0 6 -250 100 -250 25 N
+P 2 0 0 6 -225 -100 -275 -100 N
+P 2 0 0 6 -225 25 -225 -100 N
+P 2 0 0 6 -125 -50 -175 0 N
+P 2 0 0 6 -75 0 -125 -50 N
+P 2 0 0 6 -25 -50 -75 -100 N
+P 2 0 0 6 25 -100 -25 -50 N
+P 2 0 0 10 400 -200 400 -100 N
+P 2 0 0 6 400 -100 25 -100 N
+P 2 0 0 10 400 -100 400 0 N
+P 2 0 0 6 400 0 -75 0 N
+P 2 0 0 10 400 0 400 100 N
+P 2 0 0 6 400 100 -250 100 N
+P 2 0 0 10 400 100 400 200 N
+P 2 0 0 10 400 200 -400 200 N
+X ~ 1 600 100 200 L 40 40 0 0 P
+X ~ 2 600 -100 200 L 40 40 0 0 P
+X ~ 3 600 0 200 L 40 40 0 0 P
+ENDDRAW
+ENDDEF
+#
+# STEMMA_I2C_QT
+#
+DEF STEMMA_I2C_QT CONN 0 40 Y Y 3 L N
+F0 "CONN" -150 325 59 H I L BNN
+F1 "STEMMA_I2C_QT" -150 -300 59 H I L BNN
+F2 "" 0 0 50 H I C CNN
+F3 "" 0 0 50 H I C CNN
+DRAW
+P 2 1 0 0 -150 -200 150 -200 N
+P 2 1 0 0 -150 300 -150 -200 N
+P 2 1 0 0 150 -200 150 300 N
+P 2 1 0 0 150 300 -150 300 N
+X GND 1 0 200 100 R 0 50 1 0 P I
+X V+ 2 0 100 100 R 0 50 1 0 P I
+X SDA 3 0 0 100 R 0 50 1 0 P I
+X SCL 4 0 -100 100 R 0 50 1 0 P I
+X MT MT1 0 0 200 R 50 50 2 0 B
+X MT MT2 0 0 200 R 50 50 3 0 B
+ENDDRAW
+ENDDEF
+#
+# TPD6E004RSER
+#
+DEF TPD6E004RSER U 0 40 Y Y 1 L N
+F0 "U" 0 200 50 H V L CNN
+F1 "TPD6E004RSER" 0 300 50 H V L CNN
+F2 "Texas_Instruments-TPD6E004RSER-*" 0 400 50 H I L CNN
+F3 "http://www.ti.com/general/docs/lit/getliterature.tsp?genericPartNumber=TPD6E004&fileType=pdf" 0 500 50 H I L CNN
+F4 "true" 0 600 50 H I L CNN "1394  Firewire"
+F5 "6" 0 700 50 H I L CNN "Breakdown VoltageMinV"
+F6 "Manufacturer URL" 0 800 50 H I L CNN "Component Link 1 Description"
+F7 "http://www.ti.com/" 0 900 50 H I L CNN "Component Link 1 URL"
+F8 "URL Link1" 0 1000 50 H I L CNN "Component Link 3 Description"
+F9 "SamplesURL:http://www.ti.com/product/tpd6e004#samples" 0 1100 50 H I L CNN "Component Link 3 URL"
+F10 "SLLS799A" 0 1300 50 H I L CNN "Datasheet Version"
+F11 "12" 0 1700 50 H I L CNN "IEC 61000 4 2 Air Gap  kV"
+F12 "8" 0 1900 50 H I L CNN "IEC 61000 4 2 Contact  kV"
+F13 "1.6" 0 2000 50 H I L CNN "IO CapacitanceTyppF"
+F14 "1" 0 2100 50 H I L CNN "IO Leakage CurrentnA"
+F15 "Surface Mount" 0 2200 50 H I L CNN "Mounting Technology"
+F16 "8-Pin Plastic Quad Flatpack No-Lead, 1.5 x 1.5 mm Body, 0.5 mm Pitch" 0 2400 50 H I L CNN "Package Description"
+F17 "revD, Jan-2011" 0 2500 50 H I L CNN "Package Version"
+F18 "true" 0 2600 50 H I L CNN "Serial ATA  eSATA"
+F19 "ESD Solution" 0 2700 50 H I L CNN "Sub Family"
+F20 "true" 0 2900 50 H I L CNN "USB High Speed"
+F21 "IC" 0 3100 50 H I L CNN "category"
+F22 "283996" 0 3200 50 H I L CNN "ciiva ids"
+F23 "b42bcd2f03be85e7" 0 3300 50 H I L CNN "library id"
+F24 "Texas Instruments" 0 3400 50 H I L CNN "manufacturer"
+F25 "RSE0008A" 0 3500 50 H I L CNN "package"
+F26 "1464341294" 0 3600 50 H I L CNN "release date"
+F27 "Yes" 0 3700 50 H I L CNN "rohs"
+F28 "5288B349-5AA6-478E-AB0E-138914A6F05B" 0 3800 50 H I L CNN "vault revision"
+F29 "yes" 0 3900 50 H I L CNN "imported"
+DRAW
+S 200 100 800 -500 1 1 0 f
+X IO1 1 100 0 100 R 40 40 1 1 P
+X IO2 2 100 -100 100 R 40 40 1 1 P
+X IO3 3 100 -200 100 R 40 40 1 1 P
+X GND 4 900 -400 100 L 40 40 1 1 W
+X IO4 5 900 0 100 L 40 40 1 1 P
+X IO5 6 900 -100 100 L 40 40 1 1 P
+X IO6 7 900 -200 100 L 40 40 1 1 P
+X VCC 8 100 -400 100 R 40 40 1 1 W
+ENDDRAW
+ENDDEF
+#
+# TPS22910AYZVR
+#
+DEF TPS22910AYZVR U 0 40 Y Y 1 L N
+F0 "U" 0 200 50 H V L CNN
+F1 "TPS22910AYZVR" 0 300 50 H V L CNN
+F2 "Texas_Instruments-YZV0004A-0-0-*" 0 400 50 H I L CNN
+F3 "https://www.ti.com/lit/ds/symlink/tps22910a.pdf?ts=1606166252946&ref_url=https%253A%252F%252Fwww.ti.com%252Fproduct%252FTPS22910A%253FkeyMatch%253DTPS22910AYZVR%2526tisearch%253DSearch-EN-everything%2526usecase%253DOPN" 0 500 50 H I L CNN
+F4 "+85°C" 0 600 50 H I L CNN "ambient temperature range high"
+F5 "-40°C" 0 700 50 H I L CNN "ambient temperature range low"
+F6 "No" 0 800 50 H I L CNN "automotive"
+F7 "IC" 0 900 50 H I L CNN "category"
+F8 "Integrated Circuits (ICs)" 0 1000 50 H I L CNN "device class L1"
+F9 "Power Management ICs" 0 1100 50 H I L CNN "device class L2"
+F10 "Hot Swap Controllers" 0 1200 50 H I L CNN "device class L3"
+F11 "IC PWR SWITCH P-CHAN 1:1 4DSBGA" 0 1300 50 H I L CNN "digikey description"
+F12 "296-29860-1-ND" 0 1400 50 H I L CNN "digikey part number"
+F13 "0.5mm" 0 1500 50 H I L CNN "height"
+F14 "BGA4N50P2X2_88X88X50" 0 1600 50 H I L CNN "ipc land pattern name"
+F15 "Yes" 0 1700 50 H I L CNN "lead free"
+F16 "868cba573b6944f2" 0 1800 50 H I L CNN "library id"
+F17 "Texas Instruments" 0 1900 50 H I L CNN "manufacturer"
+F18 "+125°C" 0 2000 50 H I L CNN "max junction temp"
+F19 "5.5V" 0 2100 50 H I L CNN "max supply voltage"
+F20 "1.4V" 0 2200 50 H I L CNN "min supply voltage"
+F21 "Power Switch ICs - Power Distribution Ultra-Small,Low rON 2A Sgl Ch Load Sw" 0 2300 50 H I L CNN "mouser description"
+F22 "595-TPS22910AYZVR" 0 2400 50 H I L CNN "mouser part number"
+F23 "0.7-2uA" 0 2500 50 H I L CNN "nominal supply current"
+F24 "1" 0 2600 50 H I L CNN "number of channels"
+F25 "1" 0 2700 50 H I L CNN "number of outputs"
+F26 "60mΩ" 0 2800 50 H I L CNN "on state resistance"
+F27 "2A" 0 2900 50 H I L CNN "output current"
+F28 "DSBGA4" 0 3000 50 H I L CNN "package"
+F29 "Yes" 0 3100 50 H I L CNN "rohs"
+F30 "0.15mm" 0 3200 50 H I L CNN "standoff height"
+F31 "+85°C" 0 3300 50 H I L CNN "temperature range high"
+F32 "-40°C" 0 3400 50 H I L CNN "temperature range low"
+F33 "5.5us" 0 3500 50 H I L CNN "turn off delay time"
+F34 "2us" 0 3600 50 H I L CNN "turn on delay time"
+DRAW
+S 200 100 1100 -400 1 1 0 f
+X VOUT A1 1200 0 100 L 40 40 1 1 P
+X VIN A2 100 0 100 R 40 40 1 1 W
+X GND B1 1200 -300 100 L 40 40 1 1 W
+X ON B2 100 -300 100 R 40 40 1 1 W
+ENDDRAW
+ENDDEF
+#
+#End Library

@@ -1,0 +1,3 @@
+(sym_lib_table
+  (lib (name cc2652_module_rf_star)(type Legacy)(uri /home/craig/ti/github_repo/hardware/libs/cc2652_module_rf_star.lib)(options "")(descr ""))
+)
